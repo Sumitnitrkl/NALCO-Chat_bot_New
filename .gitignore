@@ -1,9 +1,8 @@
 # Ignore log files
 *.log
 
-# Ignore node_modules folder
-node_modules/
-ChatOllama/
-# Ignore specific files
-
-chroma_langchain_db/
+# Ignore specific folders
+PDF_chroma_db/
+tmp/
+*.bin
+app2.py

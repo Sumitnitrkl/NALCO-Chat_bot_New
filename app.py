@@ -64,13 +64,13 @@ class Convert2Markdown:
         
         os.makedirs(output_directory, exist_ok=True)
         base_filename = os.path.splitext(os.path.basename(input_pdf))[0]
-        markdown_path = os.path.join(output_directory, f"{base_filename}_pdf.md")
+        markdown_path = os.path.join(output_directory, f"{base_filename}.md")
         
         start_time = time.time()
         
         try:
             rendered = marker_converter(input_pdf)
-            save_output(rendered, output_directory, f"{base_filename}_pdf")
+            save_output(rendered, output_directory, f"{base_filename}")
             
             # if remove_images and os.path.exists(markdown_path):
             if remove_images :
@@ -96,32 +96,10 @@ class RAGSystem :
 
         if not self.collection_name:
             raise ValueError("'collection_name' parameter is required.")
-        
-        self.logger = self._setup_logging()
+
         self.embedding_model = OllamaEmbeddings(model="mxbai-embed-large:latest")
         self.client = chromadb.PersistentClient(path=self.db_path)
         self.collection = self.client.get_or_create_collection(name=self.collection_name)
-        self.logger.info("*** RAGSystem initialized ***")
-    
-    def _setup_logging(self) -> logging.Logger:
-        logger = logging.getLogger(__name__)
-        logger.setLevel(logging.INFO)
-        logger.handlers.clear()
-
-        log_file = Path("./RAG.log")
-        file_handler = logging.FileHandler(log_file, mode="w")
-        file_handler.setLevel(logging.INFO)
-        
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(logging.INFO)
-        
-        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
-        file_handler.setFormatter(formatter)
-        console_handler.setFormatter(formatter)
-        
-        logger.addHandler(file_handler)
-        logger.addHandler(console_handler)
-        return logger
     
     def _format_time(self, response_time):
         minutes = response_time // 60
@@ -168,7 +146,6 @@ class RAGSystem :
 
         ### **Answer:**
         """
-        self.logger.info(prompt)
         
         token_count = self.ollama_llm.get_num_tokens(prompt)
         start_time = time.time()
@@ -180,6 +157,9 @@ class RAGSystem :
 
         response_time = time.time() - start_time
         yield token_count, self._format_time(response_time)  # Send metadata at the end
+
+    def delete_collection(self):
+        self.client.delete_collection(self.collection_name)
 
 # --- Streamlit App---
 
@@ -196,6 +176,10 @@ def get_available_models():
 def remove_tags(text):
     return re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
 
+# Fetch available models
+available_models = get_available_models()
+if not available_models:
+    st.error("No installed Ollama models found. Please install one using `ollama pull <model_name>`.")
 
 # Streamlit page configuration
 st.set_page_config(page_title="Chat with your PDF", page_icon="🤖")
@@ -203,6 +187,7 @@ st.title("Chat with your PDF")
 
 # File uploader for PDF
 pdf = st.file_uploader("Upload your PDF", type="pdf")
+# print(pdf)
 
 # Initialize session state variables
 if 'processing_complete' not in st.session_state:
@@ -210,6 +195,12 @@ if 'processing_complete' not in st.session_state:
 
 if 'pdf_name' not in st.session_state:
     st.session_state.pdf_name = None
+
+# User selects the model
+selected_model = st.selectbox("Select an Ollama model:", available_models, index=0)
+
+# Initialize the RAG system
+rag_system = RAGSystem(collection_name="pdf_content", db_path="PDF_chroma_db", ollama_model=selected_model, n_results=5)
 
 # If a new PDF is uploaded, reset session state
 if pdf is not None:
@@ -219,14 +210,9 @@ if pdf is not None:
         st.session_state.pdf_name = new_pdf_name
         st.session_state.processing_complete = False
 
-        # Remove previous vector database
-        db_path = "./PDF_chroma_db"
-        if os.path.exists(db_path):
-            for file in os.listdir(db_path):
-                os.remove(os.path.join(db_path, file))
-            os.rmdir(db_path)
-
-        st.success("Previous chat and vector database cleared!")
+        # Remove collection from previous vector database
+        rag_system.delete_collection()
+        st.success("Previous chat and collection deleted. Please start a new chat.")
 
 if pdf is not None and not st.session_state.processing_complete:
     markdown_path = f"./tmp/{st.session_state.pdf_name}.md"  # Define output path
@@ -253,16 +239,24 @@ if pdf is not None and not st.session_state.processing_complete:
                 text += page.extract_text()
 
         elif st.session_state.processing_mode == "Advanced Processing":
+
+            # Define the path to save the PDF
+            os.makedirs("./tmp", exist_ok=True)
+            pdf_path = f"./tmp/{pdf.name}"
+
+            # Save the uploaded file to disk
+            with open(pdf_path, "wb") as f:
+                f.write(pdf.getbuffer())
+
             artifact_dict = create_model_dict()
             converter = PdfConverter(artifact_dict=artifact_dict)
-            
-            # Convert PDF to Markdown
-            rendered = converter(pdf)
-            save_output(rendered, "./tmp/", f"{st.session_state.pdf_name}_pdf")
+            convert2md = Convert2Markdown()
+            convert2md.pdf_to_markdown(marker_converter=converter, input_pdf=pdf_path, output_directory="./tmp/")
+            text = convert2md._load_file(markdown_path)
 
             # Load extracted Markdown text
-            with open(markdown_path, "r", encoding="utf-8") as file:
-                text = file.read()
+            # with open(markdown_path, "r", encoding="utf-8") as file:
+            #     text = file.read()
 
         # Split the text into chunks
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
@@ -286,14 +280,6 @@ if st.button("Clear Chat"):
     st.session_state.messages = []
     st.rerun()
 
-# Fetch available models
-available_models = get_available_models()
-if not available_models:
-    st.error("No installed Ollama models found. Please install one using `ollama pull <model_name>`.")
-
-# User selects the model
-selected_model = st.selectbox("Select an Ollama model:", available_models, index=0)
-
 # Store the selected model in session state
 if "ollama_model" not in st.session_state:
     st.session_state["ollama_model"] = selected_model
@@ -311,9 +297,6 @@ if "max_messages" not in st.session_state:
 
 # Slider to choose the number of retrieved results
 # n_results = st.slider("Number of retrieved documents", min_value=1, max_value=10, value=5)
-
-# Initialize the RAG system
-rag_system = RAGSystem(collection_name="pdf_content", db_path="PDF_chroma_db", ollama_model=selected_model, n_results=5)
 
 
 # Display chat history

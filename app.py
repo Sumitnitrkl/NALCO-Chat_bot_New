@@ -16,6 +16,10 @@ from langchain.schema import Document
 
 os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
+# Set up logging
+logger = logging.getLogger(__name__)
+logger.info(f"Streamlit app is running")
+
 class Convert2Markdown:
     """
     Convert2Markdown: Converts PDF and HTML files to Markdown.
@@ -88,7 +92,13 @@ class RAGSystem :
     """
     RAG System
     """
-    def __init__(self, collection_name: str, db_path: str ="chroma_db", ollama_model: str='deepseek-r1:7b', n_results: int =5) :
+    def __init__(
+            self, collection_name: str, 
+            db_path: str ="PDF_chroma_db", 
+            ollama_model: str='deepseek-r1:7b', 
+            n_results: int =5
+        ) :
+
         self.collection_name = collection_name
         self.db_path = db_path
         self.ollama_llm = OllamaLLM(model=ollama_model)
@@ -97,9 +107,31 @@ class RAGSystem :
         if not self.collection_name:
             raise ValueError("'collection_name' parameter is required.")
 
+        self.logger = self._setup_logging()
         self.embedding_model = OllamaEmbeddings(model="mxbai-embed-large:latest")
         self.client = chromadb.PersistentClient(path=self.db_path)
         self.collection = self.client.get_or_create_collection(name=self.collection_name)
+        self.logger.info("*** RAGSystem initialized ***")
+    
+    def _setup_logging(self) -> logging.Logger:
+        logger = logging.getLogger(__name__)
+        logger.setLevel(logging.INFO)
+        logger.handlers.clear()
+
+        log_file = Path("./RAG.log")
+        file_handler = logging.FileHandler(log_file, mode="w")
+        file_handler.setLevel(logging.INFO)
+        
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.INFO)
+        
+        formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+        file_handler.setFormatter(formatter)
+        console_handler.setFormatter(formatter)
+        
+        logger.addHandler(file_handler)
+        logger.addHandler(console_handler)
+        return logger
     
     def _format_time(self, response_time):
         minutes = response_time // 60
@@ -146,17 +178,20 @@ class RAGSystem :
 
         ### **Answer:**
         """
+        self.logger.info(f"-> prompt : {prompt}")
         
         token_count = self.ollama_llm.get_num_tokens(prompt)
         start_time = time.time()
 
         streamed_response = ""
-        for chunk in self.ollama_llm.stream(prompt):  # Streaming response
+        for chunk in self.ollama_llm.stream(prompt): 
             streamed_response += chunk
-            yield streamed_response  # Yield response incrementally
+            yield streamed_response 
 
         response_time = time.time() - start_time
-        yield token_count, self._format_time(response_time)  # Send metadata at the end
+        self.logger.info(f"-> LLM Response : {streamed_response}")
+        self.logger.info(f"-> input token count : {token_count}  |  response time : {self._format_time(response_time)}")
+        yield token_count, self._format_time(response_time) 
 
     def delete_collection(self):
         self.client.delete_collection(self.collection_name)
@@ -181,13 +216,26 @@ available_models = get_available_models()
 if not available_models:
     st.error("No installed Ollama models found. Please install one using `ollama pull <model_name>`.")
 
-# Streamlit page configuration
-st.set_page_config(page_title="Chat with your PDF", page_icon="🤖")
-st.title("Chat with your PDF")
+image2 = Image.open('images/ChatPDF3.png')
+st.set_page_config(page_title="Chat with your PDF", page_icon=image2)
+
+st.header("💬 Chat with your PDF Locally Using Ollama")
+image = Image.open('images/ChatPDF5.png')
+st.image(image)
+
+with st.sidebar:
+    st.info("""
+##### There're 2 method to process PDF after uploading: 
+    - Simple Processing : extract the text directly from the pdf if the pdf searchable. (Faster)
+    - Advanced Processing : extract the text by converting the pdf to markdown using OCR and then search the markdown file. (Slower)
+        
+-> The chatbot depends on your performence of your labtop, so please be patient!
+""")
+    pdf = st.file_uploader("Upload your PDF", type="pdf")
+    
 
 # File uploader for PDF
-pdf = st.file_uploader("Upload your PDF", type="pdf")
-# print(pdf)
+# pdf = st.file_uploader("Upload your PDF", type="pdf")
 
 # Initialize session state variables
 if 'processing_complete' not in st.session_state:
@@ -197,116 +245,115 @@ if 'pdf_name' not in st.session_state:
     st.session_state.pdf_name = None
 
 # User selects the model
-selected_model = st.selectbox("Select an Ollama model:", available_models, index=0)
+# ollama_model = 'deepseek-r1:7b'
+
+with st.sidebar:
+    # If a new PDF is uploaded, reset session state
+    if pdf is not None:
+        new_pdf_name = os.path.splitext(pdf.name)[0]
+        
+        if st.session_state.pdf_name != new_pdf_name:
+            st.session_state.pdf_name = new_pdf_name
+            st.session_state.processing_complete = False
+
+            # Remove collection from previous vector database
+            rag_system2 = RAGSystem(collection_name="pdf_content")
+            rag_system2.delete_collection()
+            st.success("Previous chat and collection deleted. Please start a new chat.")
+
+    if pdf is not None and not st.session_state.processing_complete:
+        markdown_path = f"./tmp/{st.session_state.pdf_name}.md"  # Define output path
+
+        # Choose processing mode
+        processing_mode = st.radio("Choose processing mode:", ("Simple Processing", "Advanced Processing"))
+
+        # Button to start processing
+        start_button = st.button("Start Processing")
+
+        if start_button:
+            # Set processing_complete to True when processing starts
+            st.session_state.processing_complete = True
+            st.session_state.processing_mode = processing_mode  # Store the selected mode
+
+            text = ""
+
+            # Process PDF based on the selected mode
+            if st.session_state.processing_mode == "Simple Processing":
+                # Extract text from the uploaded PDF
+                pdf_reader = PdfReader(pdf)
+                for page in pdf_reader.pages:
+                    text += page.extract_text()
+
+            elif st.session_state.processing_mode == "Advanced Processing":
+                os.makedirs("./tmp", exist_ok=True)
+                pdf_path = f"./tmp/{pdf.name}"
+
+                # Save the uploaded file to disk
+                with open(pdf_path, "wb") as f:
+                    f.write(pdf.getbuffer())
+
+                artifact_dict = create_model_dict()
+                converter = PdfConverter(artifact_dict=artifact_dict)
+                convert2md = Convert2Markdown()
+                convert2md.pdf_to_markdown(marker_converter=converter, input_pdf=pdf_path, output_directory="./tmp/")
+                text = convert2md._load_file(markdown_path)
+
+            # Split the text into chunks
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
+            chunks = text_splitter.split_text(text)
+
+            # Convert chunks into Document objects
+            documents = [Document(page_content=chunk) for chunk in chunks]
+
+            # Create embeddings and a vector database
+            vector_db = Chroma.from_documents(
+                documents=documents,
+                embedding=OllamaEmbeddings(model="mxbai-embed-large:latest"),
+                collection_name="pdf_content",
+                persist_directory="./PDF_chroma_db",
+            )
+
+            st.success("Processing Complete!")
+
+
+    selected_model = st.selectbox("Select an Ollama model:", available_models, index=0)
+    
+    if st.button("Clear Chat"):
+        st.session_state.messages = []
+        st.rerun()
 
 # Initialize the RAG system
 rag_system = RAGSystem(collection_name="pdf_content", db_path="PDF_chroma_db", ollama_model=selected_model, n_results=5)
 
-# If a new PDF is uploaded, reset session state
-if pdf is not None:
-    new_pdf_name = os.path.splitext(pdf.name)[0]
-    
-    if st.session_state.pdf_name != new_pdf_name:
-        st.session_state.pdf_name = new_pdf_name
-        st.session_state.processing_complete = False
+# # Select the Ollama model
+# # Store the selected model in session state
+# if "ollama_model" not in st.session_state:
+#     st.session_state["ollama_model"] = selected_model
 
-        # Remove collection from previous vector database
-        rag_system.delete_collection()
-        st.success("Previous chat and collection deleted. Please start a new chat.")
-
-if pdf is not None and not st.session_state.processing_complete:
-    markdown_path = f"./tmp/{st.session_state.pdf_name}.md"  # Define output path
-
-    # Choose processing mode
-    processing_mode = st.radio("Choose processing mode:", ("Simple Processing", "Advanced Processing"))
-
-    # Button to start processing
-    start_button = st.button("Start Processing")
-
-    if start_button:
-        # Set processing_complete to True when processing starts
-        st.session_state.processing_complete = True
-        st.session_state.processing_mode = processing_mode  # Store the selected mode
-
-        # Initialize text variable
-        text = ""
-
-        # Process PDF based on the selected mode
-        if st.session_state.processing_mode == "Simple Processing":
-            # Extract text from the uploaded PDF
-            pdf_reader = PdfReader(pdf)
-            for page in pdf_reader.pages:
-                text += page.extract_text()
-
-        elif st.session_state.processing_mode == "Advanced Processing":
-
-            # Define the path to save the PDF
-            os.makedirs("./tmp", exist_ok=True)
-            pdf_path = f"./tmp/{pdf.name}"
-
-            # Save the uploaded file to disk
-            with open(pdf_path, "wb") as f:
-                f.write(pdf.getbuffer())
-
-            artifact_dict = create_model_dict()
-            converter = PdfConverter(artifact_dict=artifact_dict)
-            convert2md = Convert2Markdown()
-            convert2md.pdf_to_markdown(marker_converter=converter, input_pdf=pdf_path, output_directory="./tmp/")
-            text = convert2md._load_file(markdown_path)
-
-            # Load extracted Markdown text
-            # with open(markdown_path, "r", encoding="utf-8") as file:
-            #     text = file.read()
-
-        # Split the text into chunks
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
-        chunks = text_splitter.split_text(text)
-
-        # Convert chunks into Document objects
-        documents = [Document(page_content=chunk) for chunk in chunks]
-
-        # Create embeddings and a vector database
-        vector_db = Chroma.from_documents(
-            documents=documents,
-            embedding=OllamaEmbeddings(model="mxbai-embed-large:latest"),
-            collection_name="pdf_content",
-            persist_directory="./PDF_chroma_db",
-        )
-
-        st.success("Processing Complete!")
-
-
-if st.button("Clear Chat"):
-    st.session_state.messages = []
-    st.rerun()
-
-# Store the selected model in session state
-if "ollama_model" not in st.session_state:
-    st.session_state["ollama_model"] = selected_model
-
-if selected_model != st.session_state.get("ollama_model"):
-    st.session_state["ollama_model"] = selected_model
-    st.session_state.messages = []  # Clear messages when changing model
-    st.rerun()
+# if selected_model != st.session_state.get("ollama_model"):
+#     st.session_state["ollama_model"] = selected_model
+#     st.session_state.messages = []  # Clear messages when changing model
+#     st.rerun()
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "max_messages" not in st.session_state:
-    st.session_state.max_messages = 60  # 30 user + 30 assistant messages
+    st.session_state.max_messages = 40  # 20 user + 20 assistant messages
 
 # Slider to choose the number of retrieved results
 # n_results = st.slider("Number of retrieved documents", min_value=1, max_value=10, value=5)
-
 
 # Display chat history
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
+st.markdown("----")
+
 # Stop if max messages are reached
 if len(st.session_state.messages) >= st.session_state.max_messages:
-    st.info("Notice: The maximum message limit for this demo version has been reached. We value your interest!")
+    st.info("Notice: The maximum message limit for this demo version has been reached. clear the chat plz!")
 else:
     if prompt := st.chat_input("What is up?"):
         st.session_state.messages.append({"role": "user", "content": prompt})

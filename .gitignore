@@ -1,8 +1,5 @@
-# Ignore log files
-*.log
-
-# Ignore specific folders
 PDF_chroma_db/
 tmp/
+*.log
 *.bin
-app2.py
+*.sqlite3

@@ -199,13 +199,16 @@ class RAGSystem :
 # --- Streamlit App---
 
 def get_available_models():
-    """Fetches the installed Ollama models."""
+    """Fetches the installed Ollama models, excluding 'NAME' and models containing 'embed'."""
     try:
-        result = subprocess.run(["ollama", "list"], capture_output=True, text=True)
-        models = [line.split(" ")[0] for line in result.stdout.strip().split("\n") if line]
+        result = subprocess.run(["ollama", "list"], capture_output=True, text=True, check=True)
+        models = [
+            line.split(" ")[0] for line in result.stdout.strip().split("\n")
+            if line and "NAME" not in line and "embed" not in line.lower()
+        ]
         return models
-    except Exception as e:
-        st.error(f"Error fetching models: {e}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error fetching models: {e}")
         return []
 
 def remove_tags(text):
@@ -219,18 +222,15 @@ if not available_models:
 image2 = Image.open('images/ChatPDF3.png')
 st.set_page_config(page_title="Chat with your PDF", page_icon=image2)
 
-st.header("💬 Chat with your PDF Locally Using Ollama")
-image = Image.open('images/ChatPDF5.png')
-st.image(image)
+st.header("💬 Chat with your PDF")
+# image = Image.open('images/ChatPDF5.png')
+# st.image(image)
 
 with st.sidebar:
-    st.info("""
-##### There're 2 method to process PDF after uploading: 
-    - Simple Processing : extract the text directly from the pdf if the pdf searchable. (Faster)
-    - Advanced Processing : extract the text by converting the pdf to markdown using OCR and then search the markdown file. (Slower)
-        
--> The chatbot depends on your performence of your labtop, so please be patient!
-""")
+    st.header("💬 Chat with your PDF Locally Using Ollama")
+    image = Image.open('images/ChatPDF5.png')
+    st.image(image)
+
     pdf = st.file_uploader("Upload your PDF", type="pdf")
     
 
@@ -317,15 +317,25 @@ with st.sidebar:
 
 
     selected_model = st.selectbox("Select an Ollama model:", available_models, index=0)
+
+    # Slider to choose the number of retrieved results
+    n_results = st.slider("Number of retrieved documents", min_value=1, max_value=10, value=5)
     
     if st.button("Clear Chat"):
         st.session_state.messages = []
         st.rerun()
 
-# Initialize the RAG system
-rag_system = RAGSystem(collection_name="pdf_content", db_path="PDF_chroma_db", ollama_model=selected_model, n_results=5)
+    st.info("""
+##### There're 2 method to process PDF after uploading: 
+    - Simple Processing : extract the text directly from the pdf if the pdf searchable. (Faster)
+    - Advanced Processing : extract the text by converting the pdf to markdown using OCR and then search the markdown file. (Slower)
+        
+-> The chatbot depends on your performence of your labtop, so please be patient!
+""")
 
-# # Select the Ollama model
+# Initialize the RAG system
+rag_system = RAGSystem(collection_name="pdf_content", db_path="PDF_chroma_db", ollama_model=selected_model, n_results=n_results)
+
 # # Store the selected model in session state
 # if "ollama_model" not in st.session_state:
 #     st.session_state["ollama_model"] = selected_model
@@ -340,9 +350,6 @@ if "messages" not in st.session_state:
 
 if "max_messages" not in st.session_state:
     st.session_state.max_messages = 40  # 20 user + 20 assistant messages
-
-# Slider to choose the number of retrieved results
-# n_results = st.slider("Number of retrieved documents", min_value=1, max_value=10, value=5)
 
 # Display chat history
 for message in st.session_state.messages:
@@ -362,7 +369,7 @@ else:
 
         with st.chat_message("assistant"):
             try:
-
+                # Stream LLM response
                 response_placeholder = st.empty()
                 streamed_response = ""
 
@@ -373,7 +380,11 @@ else:
                         streamed_response = chunk
                         response_placeholder.markdown(streamed_response)  # Update UI
 
-                st.write(f"Token Count: {token_count}, Response Time: {response_time}")
+                # st.write(f"Token Count: {token_count}, Response Time: {response_time}")
+                st.markdown(f"""
+                \n---- 
+                Token Count: {token_count}, Response Time: {response_time}
+                """)
 
                 response = f"""
                 {remove_tags(streamed_response)}

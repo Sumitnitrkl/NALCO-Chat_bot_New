@@ -1,4 +1,5 @@
 import os, time, re
+import shutil
 import logging
 import chromadb
 import subprocess
@@ -111,7 +112,7 @@ class RAGSystem :
         self.embedding_model = OllamaEmbeddings(model="mxbai-embed-large:latest")
         self.client = chromadb.PersistentClient(path=self.db_path)
         self.collection = self.client.get_or_create_collection(name=self.collection_name)
-        self.logger.info("*** RAGSystem initialized ***")
+        # self.logger.info("*** RAGSystem initialized ***")
     
     def _setup_logging(self) -> logging.Logger:
         logger = logging.getLogger(__name__)
@@ -153,6 +154,7 @@ class RAGSystem :
     
     def generate_response(self, query: str):
         """Generates a response using retrieved documents and an LLM."""
+        self.logger.info("--> Generate Response from LLM")
         retrieved_docs = self._retrieve(query)
         if not retrieved_docs:
             return "No relevant information found."
@@ -178,7 +180,8 @@ class RAGSystem :
 
         ### **Answer:**
         """
-        self.logger.info(f"-> prompt : {prompt}")
+        self.logger.info(f"-> User Query : {query}")
+        self.logger.info(f"-> Context : {prompt}")
         
         token_count = self.ollama_llm.get_num_tokens(prompt)
         start_time = time.time()
@@ -191,7 +194,12 @@ class RAGSystem :
         response_time = time.time() - start_time
         self.logger.info(f"-> LLM Response : {streamed_response}")
         self.logger.info(f"-> input token count : {token_count}  |  response time : {self._format_time(response_time)}")
-        yield token_count, self._format_time(response_time) 
+        metadata = {
+            'n_results': self.n_results,
+            'token_count': token_count,
+            'response_time': self._format_time(response_time)
+        }
+        yield metadata
 
     def delete_collection(self):
         self.client.delete_collection(self.collection_name)
@@ -219,23 +227,18 @@ available_models = get_available_models()
 if not available_models:
     st.error("No installed Ollama models found. Please install one using `ollama pull <model_name>`.")
 
-image2 = Image.open('images/ChatPDF3.png')
+image2 = Image.open('imgs/ChatPDF3.png')
 st.set_page_config(page_title="Chat with your PDF", page_icon=image2)
 
 st.header("💬 Chat with your PDF")
-# image = Image.open('images/ChatPDF5.png')
-# st.image(image)
 
 with st.sidebar:
     st.header("💬 Chat with your PDF Locally Using Ollama")
-    image = Image.open('images/ChatPDF5.png')
+    image = Image.open('imgs/ChatPDF3.png')
     st.image(image)
 
+    # File uploader for PDF
     pdf = st.file_uploader("Upload your PDF", type="pdf")
-    
-
-# File uploader for PDF
-# pdf = st.file_uploader("Upload your PDF", type="pdf")
 
 # Initialize session state variables
 if 'processing_complete' not in st.session_state:
@@ -243,9 +246,6 @@ if 'processing_complete' not in st.session_state:
 
 if 'pdf_name' not in st.session_state:
     st.session_state.pdf_name = None
-
-# User selects the model
-# ollama_model = 'deepseek-r1:7b'
 
 with st.sidebar:
     # If a new PDF is uploaded, reset session state
@@ -277,26 +277,33 @@ with st.sidebar:
 
             text = ""
 
-            # Process PDF based on the selected mode
-            if st.session_state.processing_mode == "Simple Processing":
-                # Extract text from the uploaded PDF
-                pdf_reader = PdfReader(pdf)
-                for page in pdf_reader.pages:
-                    text += page.extract_text()
+            with st.spinner("Processing PDF..."):  # Landing spinner
+                # Process PDF based on the selected mode
+                if st.session_state.processing_mode == "Simple Processing":
+                    # Extract text from the uploaded PDF
+                    pdf_reader = PdfReader(pdf)
+                    for page in pdf_reader.pages:
+                        text += page.extract_text()
 
-            elif st.session_state.processing_mode == "Advanced Processing":
-                os.makedirs("./tmp", exist_ok=True)
-                pdf_path = f"./tmp/{pdf.name}"
+                elif st.session_state.processing_mode == "Advanced Processing":
+                    # Remove the tmp folder if it exists
+                    if os.path.exists("./tmp"):
+                        shutil.rmtree("./tmp")
 
-                # Save the uploaded file to disk
-                with open(pdf_path, "wb") as f:
-                    f.write(pdf.getbuffer())
+                    # Recreate the tmp folder
+                    os.makedirs("./tmp", exist_ok=True)
 
-                artifact_dict = create_model_dict()
-                converter = PdfConverter(artifact_dict=artifact_dict)
-                convert2md = Convert2Markdown()
-                convert2md.pdf_to_markdown(marker_converter=converter, input_pdf=pdf_path, output_directory="./tmp/")
-                text = convert2md._load_file(markdown_path)
+                    pdf_path = f"./tmp/{pdf.name}"
+
+                    # Save the uploaded file to disk
+                    with open(pdf_path, "wb") as f:
+                        f.write(pdf.getbuffer())
+
+                    artifact_dict = create_model_dict()
+                    converter = PdfConverter(artifact_dict=artifact_dict)
+                    convert2md = Convert2Markdown()
+                    convert2md.pdf_to_markdown(marker_converter=converter, input_pdf=pdf_path, output_directory="./tmp/")
+                    text = convert2md._load_file(markdown_path)
 
             # Split the text into chunks
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
@@ -305,17 +312,21 @@ with st.sidebar:
             # Convert chunks into Document objects
             documents = [Document(page_content=chunk) for chunk in chunks]
 
-            # Create embeddings and a vector database
-            vector_db = Chroma.from_documents(
-                documents=documents,
-                embedding=OllamaEmbeddings(model="mxbai-embed-large:latest"),
-                collection_name="pdf_content",
-                persist_directory="./PDF_chroma_db",
-            )
+            with st.spinner("Generating embeddings..."):
+                # Create embeddings and a vector database
+                vector_db = Chroma.from_documents(
+                    documents=documents,
+                    embedding=OllamaEmbeddings(model="mxbai-embed-large:latest"),
+                    collection_name="pdf_content",
+                    persist_directory="./PDF_chroma_db",
+                )
 
             st.success("Processing Complete!")
+            # st.snow()
+            # st.balloons()
 
 
+    # User selects the model
     selected_model = st.selectbox("Select an Ollama model:", available_models, index=0)
 
     # Slider to choose the number of retrieved results
@@ -336,14 +347,6 @@ with st.sidebar:
 # Initialize the RAG system
 rag_system = RAGSystem(collection_name="pdf_content", db_path="PDF_chroma_db", ollama_model=selected_model, n_results=n_results)
 
-# # Store the selected model in session state
-# if "ollama_model" not in st.session_state:
-#     st.session_state["ollama_model"] = selected_model
-
-# if selected_model != st.session_state.get("ollama_model"):
-#     st.session_state["ollama_model"] = selected_model
-#     st.session_state.messages = []  # Clear messages when changing model
-#     st.rerun()
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -360,7 +363,7 @@ st.markdown("----")
 
 # Stop if max messages are reached
 if len(st.session_state.messages) >= st.session_state.max_messages:
-    st.info("Notice: The maximum message limit for this demo version has been reached. clear the chat plz!")
+    st.info("Notice: The maximum message limit has been reached. clear the chat plz!")
 else:
     if prompt := st.chat_input("What is up?"):
         st.session_state.messages.append({"role": "user", "content": prompt})
@@ -369,28 +372,30 @@ else:
 
         with st.chat_message("assistant"):
             try:
-                # Stream LLM response
-                response_placeholder = st.empty()
-                streamed_response = ""
+                metadata = None
+                with st.spinner("Waiting for response..."):
+                    # Stream LLM response
+                    response_placeholder = st.empty()
+                    streamed_response = ""
 
-                for chunk in rag_system.generate_response(prompt):  # Stream response
-                    if isinstance(chunk, tuple):
-                        token_count, response_time = chunk  # Extract metadata
-                    else:
-                        streamed_response = chunk
-                        response_placeholder.markdown(streamed_response)  # Update UI
+                    for chunk in rag_system.generate_response(prompt):  # Stream response
+                        if isinstance(chunk, tuple):
+                            metadata = chunk  # Extract metadata
+                        else:
+                            streamed_response = chunk
+                            response_placeholder.markdown(streamed_response)  # Update UI
 
-                # st.write(f"Token Count: {token_count}, Response Time: {response_time}")
+                    # st.write(f"Token Count: {token_count}, Response Time: {response_time}")
                 st.markdown(f"""
                 \n---- 
-                Token Count: {token_count}, Response Time: {response_time}
+                Token Count: {metadata['token_count']}, Response Time: {metadata['response_time']}, n_results of context: {metadata['n_results']}  
                 """)
 
                 response = f"""
                 {remove_tags(streamed_response)}
 
                 \n----
-                Token Count: {token_count} | Response Time: {response_time}
+                Token Count: {metadata['token_count']}, Response Time: {metadata['response_time']}, n_results of context: {metadata['n_results']} 
                 """
 
                 # Store assistant response

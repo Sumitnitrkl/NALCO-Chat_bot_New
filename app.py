@@ -368,45 +368,48 @@ if len(st.session_state.messages) >= st.session_state.max_messages:
     st.info("Notice: The maximum message limit has been reached. clear the chat plz!")
 else:
     if prompt := st.chat_input("What is up?"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+        if pdf is None or st.session_state.processing_complete != True :
+            st.error("Please upload at least one PDF file.")
+        else:
+            st.session_state.messages.append({"role": "user", "content": prompt})
+            with st.chat_message("user"):
+                st.markdown(prompt)
 
-        with st.chat_message("assistant"):
-            try:
-                metadata = None
-                with st.spinner("Thinking..."):
-                    # Stream LLM response
-                    response_placeholder = st.empty()
-                    streamed_response = ""
+            with st.chat_message("assistant"):
+                try:
+                    metadata = None
+                    with st.spinner("Thinking..."):
+                        # Stream LLM response
+                        response_placeholder = st.empty()
+                        streamed_response = ""
 
-                    for chunk in rag_system.generate_response(prompt):  # Stream response
-                        if isinstance(chunk, dict):  # Ensure metadata is correctly assigned
-                            metadata = chunk
-                        else:
-                            streamed_response = chunk  # Accumulate response text
-                            response_placeholder.markdown(streamed_response)  # Update UI
+                        for chunk in rag_system.generate_response(prompt):  # Stream response
+                            if isinstance(chunk, dict):  # Ensure metadata is correctly assigned
+                                metadata = chunk
+                            else:
+                                streamed_response = chunk  # Accumulate response text
+                                response_placeholder.markdown(streamed_response)  # Update UI
 
-                logger.info(f"Metadata: {metadata}")
+                    logger.info(f"Metadata: {metadata}")
 
-                # if metadata:
-                st.write(f"""
-                    \n\n----
-                    Token Count: {metadata.get('token_count', 'N/A')} | Response Time: {metadata.get('response_time', 'N/A')} | n_results of context: {metadata.get('n_results', 'N/A')}  
-                    """)
+                    # if metadata:
+                    st.write(f"""
+                        \n\n----
+                        Token Count: {metadata.get('token_count', 'N/A')} | Response Time: {metadata.get('response_time', 'N/A')} | n_results of context: {metadata.get('n_results', 'N/A')}  
+                        """)
 
-                response = f"""
-                    {remove_tags(streamed_response)}
+                    response = f"""
+                        {remove_tags(streamed_response)}
 
-                    \n----
-                    Token Count: {metadata.get('token_count', 'N/A')}, 
-                    Response Time: {metadata.get('response_time', 'N/A')}, 
-                    n_results of context: {metadata.get('n_results', 'N/A')} 
-                    """
+                        \n----
+                        Token Count: {metadata.get('token_count', 'N/A')}, 
+                        Response Time: {metadata.get('response_time', 'N/A')}, 
+                        n_results of context: {metadata.get('n_results', 'N/A')} 
+                        """
 
-                    # Store assistant response
-                st.session_state.messages.append({"role": "assistant", "content": response})
+                        # Store assistant response
+                    st.session_state.messages.append({"role": "assistant", "content": response})
 
-            except Exception as e:
-                st.session_state.messages.append({"role": "assistant", "content": f"Error: {e}"})
-                st.rerun()
+                except Exception as e:
+                    st.session_state.messages.append({"role": "assistant", "content": f"Error: {e}"})
+                    st.rerun()

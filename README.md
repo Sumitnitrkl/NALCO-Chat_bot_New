@@ -2,9 +2,7 @@
 
 ## Overview
 
-"ChatPDF" is an interactive web application that allows you to upload a PDF file and engage with it by querying specific information. The app processes the PDF using various techniques, such as extracting text directly or converting it to Markdown, and stores the information in a local database to generate responses to user queries. The app is powered by Ollama and integrates with the Langchain framework to generate accurate answers based on the content within the PDF. It's a powerful local RAG (Retrieval Augmented Generation) application that lets you chat with your PDF documents.
-
-**ChatPDF** is a Retrieval-Augmented Generation (RAG) application that allows users to upload PDF documents and interact with them through a chatbot interface. The system uses advanced embedding models and a local vector store for efficient and accurate question-answering.
+**ChatPDF** is an interactive web application that allows you to upload a PDF file and engage with it by querying specific information. The app processes the PDF using various techniques, such as extracting text directly or converting it to Markdown, and stores the information in a local database to generate responses to user queries. The app is powered by Ollama and integrates with the Langchain framework to generate accurate answers based on the content within the PDF. It's a powerful local RAG (Retrieval Augmented Generation) application that lets you chat with your PDF documents.
 
 <img src='./imgs/ChatPDF3.png'></img>
 
@@ -65,8 +63,6 @@ Run the app using the following command:
 Then open your browser to `http://localhost:8501` (it will open automatically)
 
 <img src='./imgs/img0.png' style='max-width=400px'></img>
-<br>
-<img src='./imgs/QA.jpg'></img>
 
 
 ## Project Structure

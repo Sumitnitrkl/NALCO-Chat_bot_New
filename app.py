@@ -175,8 +175,10 @@ class RAGSystem :
 
         ### **Instructions:**  
         - Answer concisely and accurately using only the given context.  
-        - Put what you find from the context without summarizing.
-        - If the answer is unclear or missing, state: "The provided context does not contain enough information."  
+        - Put what you find from the context **without summarizing**, and **Expand the answer**.
+        - Answer directly and concisely. (without writing 'answer :')
+        - If the context is unclear, just give me what did you find.
+        - If the context is missing state: "The provided context does not contain enough information." (but try to answer) 
 
         ### **Answer:**
         """
@@ -373,33 +375,38 @@ else:
         with st.chat_message("assistant"):
             try:
                 metadata = None
-                with st.spinner("Waiting for response..."):
+                with st.spinner("Thinking..."):
                     # Stream LLM response
                     response_placeholder = st.empty()
                     streamed_response = ""
 
                     for chunk in rag_system.generate_response(prompt):  # Stream response
-                        if isinstance(chunk, tuple):
-                            metadata = chunk  # Extract metadata
+                        if isinstance(chunk, dict):  # Ensure metadata is correctly assigned
+                            metadata = chunk
                         else:
-                            streamed_response = chunk
+                            streamed_response = chunk  # Accumulate response text
                             response_placeholder.markdown(streamed_response)  # Update UI
 
-                    # st.write(f"Token Count: {token_count}, Response Time: {response_time}")
-                st.markdown(f"""
-                \n---- 
-                Token Count: {metadata['token_count']}, Response Time: {metadata['response_time']}, n_results of context: {metadata['n_results']}  
-                """)
+                logger.info(f"Metadata: {metadata}")
+
+                # if metadata:
+                st.write(f"""
+                    \n\n----
+                    Token Count: {metadata.get('token_count', 'N/A')} | Response Time: {metadata.get('response_time', 'N/A')} | n_results of context: {metadata.get('n_results', 'N/A')}  
+                    """)
 
                 response = f"""
-                {remove_tags(streamed_response)}
+                    {remove_tags(streamed_response)}
 
-                \n----
-                Token Count: {metadata['token_count']}, Response Time: {metadata['response_time']}, n_results of context: {metadata['n_results']} 
-                """
+                    \n----
+                    Token Count: {metadata.get('token_count', 'N/A')}, 
+                    Response Time: {metadata.get('response_time', 'N/A')}, 
+                    n_results of context: {metadata.get('n_results', 'N/A')} 
+                    """
 
-                # Store assistant response
+                    # Store assistant response
                 st.session_state.messages.append({"role": "assistant", "content": response})
+
             except Exception as e:
                 st.session_state.messages.append({"role": "assistant", "content": f"Error: {e}"})
                 st.rerun()

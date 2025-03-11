@@ -89,18 +89,16 @@ Then open your browser to `http://localhost:8501` (it will open automatically)
    - **Simple Processing**: Extracts the text directly from the PDF (faster).
    - **Advanced Processing**: Converts the PDF into Markdown format using OCR and extracts the text (slower).
 
-<img src='./imgs/img1.png' style='max-width=400px'></img>
-
-2. **Model Selection** and **Customizable Retrieval**: 
-   Once the PDF is processed, the app will use an Ollama language model for text analysis and question answering. You can select a model from a list of available Ollama models. and you can adjust the number of retrieved results (`n_results`) for context.
-
-<img src='./imgs/img2.png' style='max-width=400px'></img>
+2. **Model Selection**:  
+   Once the PDF is processed, the app will use an Ollama language model for text analysis and question answering. You can select a model from a list of available Ollama models.
 
 3. **Query the Content**:
    After the processing is complete, you can ask questions based on the content of the PDF. The app will use the Chroma vector database to search for relevant information and generate an accurate response using the selected Ollama model.
 
 4. **Embedding & Vector Database**:
    The app generates embeddings from the PDF content and stores them in a Chroma vector database. This allows fast retrieval of relevant text based on user queries.
+
+### This is the Architecture of the APP :
 
 <img src='./imgs/Pre-processing.png' style='max-width=600px'></img>
 <br>
@@ -119,12 +117,17 @@ Then open your browser to `http://localhost:8501` (it will open automatically)
 1. **Upload PDF**: Upload a PDF file using the file uploader in the sidebar.
 2. **Choose Processing Mode**: Select between "Simple Processing" and "Advanced Processing."
 3. **Start Processing**: Click the "Start Processing" button to begin the conversion and embedding process.
-4. **Ask Questions**: After processing is complete, ask questions related to the content of the PDF.
-5. **Select Model**: Choose the Ollama model to generate the answers.
-6. **Clear Chat**: Clear the chat history using the "Clear Chat" button.
+4. **Select Model**: Choose the Ollama model to generate the answers.
+5. **Customizable Retrieval**: and you can adjust the number of retrieved results (`n_results`) for context.
+6. **Ask Questions**: After processing is complete, ask questions related to the content of the PDF.
+7. **Clear Chat**: Clear the chat history using the "Clear Chat" button.
 
 ### Some Screenshots :
 
+<img src='./imgs/img1.png' style='max-width=400px'></img>
+<br>
+<img src='./imgs/img2.png' style='max-width=400px'></img>
+<br>
 <img src='./imgs/img3.png' style='max-width=600px'></img>
 <br>
 <img src='./imgs/img4.png' style='max-width=600px'></img>

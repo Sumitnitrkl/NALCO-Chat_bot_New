@@ -1,4 +1,4 @@
-chromadb
+chromadb==0.6.2
 langchain
 langchain_community
 langchain_ollama
@@ -6,3 +6,4 @@ marker-pdf
 Pillow
 PyPDF2
 streamlit
+pysqlite3-binary

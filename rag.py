@@ -1,7 +1,6 @@
 import time
 import logging
 import chromadb
-from pathlib import Path
 from langchain_ollama import OllamaEmbeddings, OllamaLLM
 
 class RAGSystem :

@@ -1,13 +1,25 @@
-# Chat with Your PDF Locally 🤖
+# **ChatPDF** : Chat with Your PDF Locally 🤖
 
 ## Overview
 
 **ChatPDF** is an interactive web application that allows you to upload a PDF file and engage with it by querying specific information. The app processes the PDF using various techniques, such as extracting text directly or converting it to Markdown, and stores the information in a local database to generate responses to user queries. The app is powered by Ollama and integrates with the Langchain framework to generate accurate answers based on the content within the PDF. It's a powerful local RAG (Retrieval Augmented Generation) application that lets you chat with your PDF documents.
 
-<img src='./imgs/ChatPDF3.png'></img>
+![](./imgs/ChatPDF3.png)
+
+---
+
+### Video Demo
 
 <video src="./imgs/video.mp4" autoplay controls loop></video>
 
+## technology stack
+
+- [LangChain](https://python.langchain.com/api_reference/reference.html)
+- [Streamlit](https://docs.streamlit.io/)
+- [Ollama](https://ollama.ai/)
+- [Marker](https://github.com/VikParuchuri/marker)
+- [ChromaDB](https://docs.trychroma.com/docs/overview/getting-started)
+- Python
 
 ## Features
 
@@ -29,27 +41,19 @@
    cd Chat-with-PDF-Locally
    ```
 
-
-2. **Create a Virtual Environment** : (Optional)
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-3. **Install Dependencies**:
+2. **Install Dependencies**:
    Install the necessary dependencies using `pip`:
    ```bash
    pip install -r requirements.txt
    ```
 
-4. **Install Ollama**:
+3. **Install Ollama**:
    The app requires Ollama for language models. Follow the [Ollama installation instructions](https://ollama.com/) to install it.
 
    - Pull required models:
      ```bash
+     ollama pull mxbai-embed-large:latest  # required
      ollama pull deepseek-r1:7b  # or your preferred model
-     ollama pull mxbai-embed-large:latest
      ```
 
 ### 🎮 Running the Application
@@ -62,14 +66,15 @@ Run the app using the following command:
 
 Then open your browser to `http://localhost:8501` (it will open automatically)
 
-<img src='./imgs/img0.png' style='max-width=400px'></img>
-
+![](./imgs/img0.png)
 
 ## Project Structure
 
-```
+```bash
 .
 ├── app.py                  # Streamlit app for the user interface
+├── rag.py                  # RAG System
+├── md_convertor.py         # PDF to Markdown Convertor
 ├── requirements.txt        # List of required Python dependencies
 ├── imgs/                   # some screanshots, logo and video
 ├── PDF_chroma_db/          # Local persistent vector store (auto-generated)
@@ -80,7 +85,7 @@ Then open your browser to `http://localhost:8501` (it will open automatically)
 
 ## How it Works
 
-1. **Upload PDF**: 
+1. **Upload PDF**:
    After you upload a PDF file, the app will process the content using two modes:
    - **Simple Processing**: Extracts the text directly from the PDF (faster).
    - **Advanced Processing**: Converts the PDF into Markdown format using OCR and extracts the text (slower).
@@ -94,11 +99,13 @@ Then open your browser to `http://localhost:8501` (it will open automatically)
 4. **Embedding & Vector Database**:
    The app generates embeddings from the PDF content and stores them in a Chroma vector database. This allows fast retrieval of relevant text based on user queries.
 
-### This is the Architecture of the APP :
+### This is the Architecture of the APP
 
-<img src='./imgs/Pre-processing.png' style='max-width=600px'></img>
-<br>
-<img src='./imgs/img6.png' style='max-width=600px'></img>
+![](./imgs/Pre-processing.png)
+
+---
+
+![](./imgs/img6.png)
 
 ## Features Breakdown
 
@@ -118,17 +125,21 @@ Then open your browser to `http://localhost:8501` (it will open automatically)
 6. **Ask Questions**: After processing is complete, ask questions related to the content of the PDF.
 7. **Clear Chat**: Clear the chat history using the "Clear Chat" button.
 
-### Some Screenshots :
+### Some Screenshots
 
-<img src='./imgs/img1.png' style='max-width=400px'></img>
-<br>
-<img src='./imgs/img2.png' style='max-width=400px'></img>
-<br>
-<img src='./imgs/img3.png' style='max-width=600px'></img>
-<br>
-<img src='./imgs/img4.png' style='max-width=600px'></img>
-<br>
-<img src='./imgs/img5.png' style='max-width=600px'></img>
+![](./imgs/img1.png)
+
+---
+
+![](./imgs/img2.png)
+
+---
+
+![](./imgs/img3.png)
+
+---
+
+![](./imgs/img5.png)
 
 ## Requirements
 
@@ -140,16 +151,16 @@ Then open your browser to `http://localhost:8501` (it will open automatically)
 
 ## Troubleshooting
 
+- make sure that ollama is running locally.
 - If no Ollama models are found, ensure that Ollama is properly installed and models are pulled using `ollama pull <model_name>`.
 - Ensure that the PDF file uploaded is valid and can be processed by the app.
+- The chatbot depends on your performence of your labtop, so please be patient!
 
----
+## Additional Features to Improve to App
 
-## Acknowledgments
+- Enable Multi-Query Handling: Allow batch queries to improve performance.
+- Implement Caching for LLM Responses: Store responses in a dictionary with query as the key to avoid redundant computation.
 
-- [LangChain](https://github.com/hwchase17/langchain)
-- [Streamlit](https://github.com/streamlit/streamlit)
-- [Ollama](https://ollama.ai/)
 
 ---
 

@@ -6,4 +6,3 @@ marker-pdf
 Pillow
 PyPDF2
 streamlit
-pysqlite3-binary

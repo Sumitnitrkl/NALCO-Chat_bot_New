@@ -189,12 +189,10 @@ with st.sidebar:
     llm_provider = st.selectbox("Select LLM Provider:", ['Ollama', 'Openrouter'], index=0)
 
     if llm_provider == 'Ollama' :
-
         selected_model = st.selectbox("Select an Ollama model:", available_models, index=0)
-
     else : 
         llm_name = st.text_input("Enter LLM Name", value='qwen/qwq-32b:free')
-        # openrouter_api_key = st.text_input("Enter Openrouter API Key")
+        openrouter_api_key = st.text_input("Enter Openrouter API Key", type="password", value=os.getenv("OPENROUTER_API_KEY"))
 
     # Slider to choose the number of retrieved results
     n_results = st.slider("Number of retrieved documents", min_value=1, max_value=15, value=5)
@@ -218,8 +216,6 @@ with st.sidebar:
 ##### There're 2 method to process PDF after uploading: 
     - Simple Processing : extract the text directly from the pdf if the pdf searchable. (Faster)
     - Advanced Processing : extract the text by converting the pdf to markdown using OCR and then search the markdown file. (Slower)
-        
--> The chatbot depends on your performence of your labtop, so please be patient!
 """)
 
 # Initialize the RAG system
@@ -257,32 +253,32 @@ else:
                     with st.spinner("Thinking..."):
 
                         if llm_provider == 'Ollama' :
-                            # Stream LLM response
                             response_placeholder = st.empty()
                             streamed_response = ""
 
                             for chunk in rag_system.generate_response(prompt, selected_model):  # Stream response
-                                if isinstance(chunk, dict):  # Ensure metadata is correctly assigned
+                                if isinstance(chunk, dict):
                                     metadata = chunk
                                 else:
-                                    streamed_response = chunk  # Accumulate response text
-                                    response_placeholder.markdown(streamed_response)  # Update UI
+                                    streamed_response = chunk 
+                                    response_placeholder.markdown(streamed_response)
 
                             st.write(f"""\n\n----
-                            Token Count: {metadata.get('token_count', 'N/A')} | Response Time: {metadata.get('response_time', 'N/A')} | n_results of context: {metadata.get('n_results', 'N/A')} | LLM Name : {selected_model} """)
+                            LLM Name : {selected_model} | Token Count: {metadata.get('token_count', 'N/A')} | Response Time: {metadata.get('response_time', 'N/A')} | n_results of context: {n_results}""")
 
                             response = f"""
                             {remove_tags(streamed_response)}
                             \n\n----
-                            Token Count: {metadata.get('token_count', 'N/A')} | Response Time: {metadata.get('response_time', 'N/A')} | n_results of context: {metadata.get('n_results', 'N/A')} | LLM Name : {selected_model}
+                            LLM Name : {selected_model} | Total Tokens: {metadata.get('token_count', 'N/A')} | Response Time: {metadata.get('response_time', 'N/A')} | n_results of context: {n_results}
                             """
                         else :
-                            llm_response = rag_system.generate_response2(prompt)
+                            llm_response, total_tokens = rag_system.generate_response2(query=prompt, llm_name=llm_name, openrouter_api_key=openrouter_api_key)
                             response = f"""
                             {llm_response}
                             \n----
-                            LLM Name : {llm_name}
+                            LLM Name : {llm_name} | Total Tokens : {total_tokens} | n_results of context: {n_results}
                             """
+                            st.write(response)
 
                         # Store assistant response
                     st.session_state.messages.append({"role": "assistant", "content": response})

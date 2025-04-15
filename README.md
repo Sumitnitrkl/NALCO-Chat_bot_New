@@ -1,4 +1,4 @@
-# **ChatPDF** : Chat with Your PDF Locally 🤖
+# **ChatPDF** : Chat with PDF Locally 🤖
 
 ## Overview
 
@@ -28,9 +28,10 @@
 - **Customizable Retrieval**: Adjust the number of retrieved results (`n_results`) for context.
 - **Memory Management**: Easily clear vector store and retrievers to reset the system.
 - **Question Answering**: Use the processed PDF content to answer queries through a chatbot interface.
-- **Model Selection**: Choose from a list of available Ollama models for different tasks.
-- **Text Retrieval**: Retrieve relevant documents from the database based on the user's query.
+- **Model Selection**: Choose between model provider (Ollama or Openrouter), than choose an available Ollama LLM or enter OpenRouter LLM Name with API Key.
+- **Text Retrieval**: Retrieve relevant documents from the database based on the user's query and Re-Rank the retrieved documents using BM25, semantic similarity, Recomp-like coverage, and context filtering.
 - **Chat Interface**: Easy-to-use chat interface for interacting with the PDF content.
+- **Download the chat conversion**.
 
 ## 🚀 Getting Started
 
@@ -53,7 +54,7 @@
    - Pull required models:
      ```bash
      ollama pull mxbai-embed-large:latest  # required
-     ollama pull deepseek-r1:7b  # or your preferred model
+     ollama pull qwen2.5:latest  # or your preferred model
      ```
 
 ### 🎮 Running the Application
@@ -66,7 +67,7 @@ Run the app using the following command:
 
 Then open your browser to `http://localhost:8501` (it will open automatically)
 
-![](./imgs/img0.png)
+![](./imgs/App.png)
 
 ## Project Structure
 
@@ -77,7 +78,7 @@ Then open your browser to `http://localhost:8501` (it will open automatically)
 ├── md_convertor.py         # PDF to Markdown Convertor
 ├── requirements.txt        # List of required Python dependencies
 ├── imgs/                   # some screanshots, logo and video
-├── PDF_chroma_db/          # Local persistent vector store (auto-generated)
+├── PDF_ChromaDB/           # Local persistent vector store (auto-generated)
 └── README.md               # Project documentation
 ```
 
@@ -90,8 +91,9 @@ Then open your browser to `http://localhost:8501` (it will open automatically)
    - **Simple Processing**: Extracts the text directly from the PDF (faster).
    - **Advanced Processing**: Converts the PDF into Markdown format using OCR and extracts the text (slower).
 
-2. **Model Selection**:  
-   Once the PDF is processed, the app will use an Ollama language model for text analysis and question answering. You can select a model from a list of available Ollama models.
+2. **LLM Provider Selection**: Once the PDF is processed,Select you llm provider
+   - OLLAMA : Running Loccaly, You can select a model from a list of available Ollama models.
+   - OPENROUTER : using API, get API Key from `https://openrouter.ai/`
 
 3. **Query the Content**:
    After the processing is complete, you can ask questions based on the content of the PDF. The app will use the Chroma vector database to search for relevant information and generate an accurate response using the selected Ollama model.
@@ -102,8 +104,6 @@ Then open your browser to `http://localhost:8501` (it will open automatically)
 ### This is the Architecture of the APP
 
 ![](./imgs/Pre-processing.png)
-
----
 
 ![](./imgs/img6.png)
 
@@ -123,44 +123,60 @@ Then open your browser to `http://localhost:8501` (it will open automatically)
 4. **Select Model**: Choose the Ollama model to generate the answers.
 5. **Customizable Retrieval**: and you can adjust the number of retrieved results (`n_results`) for context.
 6. **Ask Questions**: After processing is complete, ask questions related to the content of the PDF.
-7. **Clear Chat**: Clear the chat history using the "Clear Chat" button.
+7. **Download conversion**: Download the chat conversion using the "Download" button.
+8. **Clear Chat**: Clear the chat history using the "Clear Chat" button.
 
 ### Some Screenshots
 
-![](./imgs/img1.png)
+### Sidebar
+
+- Full Screen :
+
+![](./imgs/sidebar.png)
+
+- PDF Processing :
+
+![](./imgs/pdf_processing.png)
 
 ---
 
-![](./imgs/img2.png)
+- LLM Providers : Ollama
 
----
+![](./imgs/provider1.png)
+![](./imgs/provider1-1.png)
+
+- LLM Providers : OpenRouter
+
+![](./imgs/provider2.png)
+
+#### Chat Interface
 
 ![](./imgs/img3.png)
 
----
-
-![](./imgs/img5.png)
+![](./imgs/chat1.png)
 
 ## Requirements
 
 - Python 3.8+
 - Pip
 - Ollama models installed via `ollama pull`
+- Open Router API Key
 - Marker library for PDF to Markdown conversion
 - Chroma for storing vector embeddings
 
 ## Troubleshooting
 
+- if you want to use Openrouter, get the API Key, put it in '.env' file or in input text in UI.
+- in '.env' file, set your OpenRouter API Key:
+
+```bash
+OPENROUTER_API_KEY='OpenRouter API Key'
+```
+
 - make sure that ollama is running locally.
 - If no Ollama models are found, ensure that Ollama is properly installed and models are pulled using `ollama pull <model_name>`.
 - Ensure that the PDF file uploaded is valid and can be processed by the app.
 - The chatbot depends on your performence of your labtop, so please be patient!
-
-## Additional Features to Improve to App
-
-- Enable Multi-Query Handling: Allow batch queries to improve performance.
-- Implement Caching for LLM Responses: Store responses in a dictionary with query as the key to avoid redundant computation.
-
 
 ---
 

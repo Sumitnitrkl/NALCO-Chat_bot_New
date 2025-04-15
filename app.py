@@ -168,7 +168,7 @@ with st.sidebar:
                     text = convert2md._load_file(markdown_path)
 
             # Split the text into chunks
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=2000, chunk_overlap=200)
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1024, chunk_overlap=150)
             chunks = text_splitter.split_text(text)
 
             # Convert chunks into Document objects

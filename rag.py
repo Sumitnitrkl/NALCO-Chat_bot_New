@@ -1,22 +1,24 @@
-import time
 import logging
 import chromadb
 from langchain_ollama import OllamaEmbeddings, OllamaLLM
+import time, os
+import requests
+import json
+from dotenv import load_dotenv
+
+load_dotenv()
+
+OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
 
 class RAGSystem :
-    """
-    RAG System
-    """
     def __init__(
             self, collection_name: str, 
             db_path: str ="PDF_chroma_db", 
-            ollama_model: str='deepseek-r1:7b', 
             n_results: int =5
         ) :
 
         self.collection_name = collection_name
         self.db_path = db_path
-        self.ollama_llm = OllamaLLM(model=ollama_model)
         self.n_results = n_results
 
         if not self.collection_name:
@@ -60,44 +62,63 @@ class RAGSystem :
         
         return results['documents'][0]
     
-    def generate_response(self, query: str):
-        """Generates a response using retrieved documents and an LLM."""
-        self.logger.info("--> Generate Response from LLM")
-        retrieved_docs = self._retrieve(query)
-        if not retrieved_docs:
-            return "No relevant information found."
-        
-        context = "\n-----\n".join(retrieved_docs)
-        
+    def _rerank_docs(self, retrieved_docs:list) :
+        return retrieved_docs
+    
+    def _get_prompt(self, query, context) :
         prompt = f"""
-        You are an AI assistant specialized in answering questions based **only** on the provided context.  
-        The context is structured with sections separated by `-----`.  
+    You are an AI assistant specialized in answering questions based **only** on the provided context.  
+    The context is structured with sections separated by `-----`.  
 
-        ### **Context:**  
+    ### **Context:**  
         '''  
         {context}  
         '''  
 
-        ### **Question:**  
+    ### **Question:**  
         "{query}"  
 
-        ### **Instructions:**  
+    ### **Instructions:**  
         - Answer concisely and accurately using only the given context.  
         - Put what you find from the context **without summarizing**, and **Expand the answer**.
         - Answer directly and concisely. (without writing 'answer :')
         - If the context is unclear, just give me what did you find.
         - If the context is missing state: "The provided context does not contain enough information." (but try to answer) 
 
-        ### **Answer:**
-        """
+    ### **Answer:**
+
+    """
+        return prompt
+    
+    def generate_response(self, query: str, ollama_model):
+        """Generates a response using retrieved documents and an LLM."""
+
+        if not ollama_model :
+            return "Choose and ollama LLM"
+
+        self.logger.info("--> Generate Response Using Ollama : ", ollama_model)
+
+        retrieved_docs = self._retrieve(query)
+        
+        if not retrieved_docs:
+            return "No relevant information found."
+        
+        reranked_retrieved_docs = self._rerank_docs(retrieved_docs)
+
+        context = "\n-----\n".join(reranked_retrieved_docs)
+        
+        prompt = self._get_prompt(query, context)
+
         self.logger.info(f"-> User Query : {query}")
         self.logger.info(f"-> Context : {prompt}")
+
+        ollama_llm = OllamaLLM(model=ollama_model)
         
-        token_count = self.ollama_llm.get_num_tokens(prompt)
+        token_count = ollama_llm.get_num_tokens(prompt)
         start_time = time.time()
 
         streamed_response = ""
-        for chunk in self.ollama_llm.stream(prompt): 
+        for chunk in ollama_llm.stream(prompt): 
             streamed_response += chunk
             yield streamed_response 
 
@@ -113,3 +134,39 @@ class RAGSystem :
 
     def delete_collection(self):
         self.client.delete_collection(self.collection_name)
+
+    def generate_response2(self, query, llm_name='qwen/qwq-32b:free') :
+
+        self.logger.info("--> Generate Response Using OpenRouter : ", llm_name)
+
+        retrieved_docs = self._retrieve(query)
+        
+        if not retrieved_docs:
+            return "No relevant information found."
+        
+        reranked_retrieved_docs = self._rerank_docs(retrieved_docs)
+
+        context = "\n-----\n".join(reranked_retrieved_docs)
+
+        prompt = self._get_prompt(query, context)
+
+        response = requests.post(
+            url="https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            data=json.dumps({
+                "model": llm_name,
+                "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+                ],
+            })
+        )
+
+        response_data = json.loads(response.text)
+        # print(response_data)
+        return response_data["choices"][0]["message"]["content"]

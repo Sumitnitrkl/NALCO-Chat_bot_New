@@ -1,4 +1,4 @@
-chromadb==0.6.2
+chromadb
 langchain
 langchain_community
 langchain_ollama

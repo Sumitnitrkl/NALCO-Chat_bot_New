@@ -1,4 +1,4 @@
-import os, re
+import os, re, io
 import shutil
 import logging
 import subprocess
@@ -11,6 +11,9 @@ from marker.models import create_model_dict
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma 
 from langchain.schema import Document 
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.utils import simpleSplit
 from rag import RAGSystem
 from md_convertor import Convert2Markdown
 
@@ -20,8 +23,50 @@ os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 logger = logging.getLogger(__name__)
 logger.info(f"Streamlit app is running")
 
+# Function to generate PDF
+def generate_pdf():
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
 
-# --- Streamlit App---
+    y = height - 40  # Start position for text
+    max_width = width - 80  # Margin for text wrapping
+
+    c.setFont("Helvetica-Bold", 16)
+    header_text = "Conversation History"
+    text_width = c.stringWidth(header_text, "Helvetica-Bold", 16)
+    c.drawString((width - text_width) / 2, height - 40, header_text)
+
+    y -= 30  # Adjust position after header
+    c.setFont("Helvetica", 12)
+
+    for msg in st.session_state.messages:
+        role = "User" if msg["role"] == "user" else "LLM"
+        text = f"{role}: {msg['content']}"
+
+        # Separate user questions with a line
+        if msg["role"] == "user":
+            y -= 10
+            c.setStrokeColorRGB(0, 0, 0)
+            c.line(40, y, width - 40, y)
+            y -= 20  
+
+        # Wrap text within max_width
+        wrapped_lines = simpleSplit(text, c._fontname, c._fontsize, max_width)
+
+        for line in wrapped_lines:
+            c.drawString(40, y, line)
+            y -= 20
+            
+            # Handle page breaks
+            if y < 40:
+                c.showPage()
+                c.setFont("Helvetica", 12)
+                y = height - 40  # Reset position after new page
+
+    c.save()
+    buffer.seek(0)
+    return buffer
 
 def get_available_models():
     """Fetches the installed Ollama models, excluding 'NAME' and models containing 'embed'."""
@@ -45,12 +90,12 @@ if not available_models:
     st.error("No installed Ollama models found. Please install one using `ollama pull <model_name>`.")
 
 image2 = Image.open('imgs/ChatPDF3.png')
-st.set_page_config(page_title="Chat with your PDF", page_icon=image2)
+st.set_page_config(page_title="Chat with PDF", page_icon=image2)
 
-st.header("💬 Chat with your PDF")
+st.subheader("💬 Chat with PDF :")
 
 with st.sidebar:
-    st.header("💬 Chat with your PDF Locally Using Ollama")
+    st.header("💬 Chat with your PDF Locally Using Ollama/OpenRouter")
     image = Image.open('imgs/ChatPDF3.png')
     st.image(image)
 
@@ -135,25 +180,41 @@ with st.sidebar:
                     documents=documents,
                     embedding=OllamaEmbeddings(model="mxbai-embed-large:latest"),
                     collection_name="pdf_content",
-                    persist_directory="./PDF_chroma_db",
+                    persist_directory="./PDF_ChromaDB",
                 )
 
             st.success("Processing Complete!")
-            # st.snow()
-            # st.balloons()
 
+    # User selects the model Provider
+    llm_provider = st.selectbox("Select LLM Provider:", ['Ollama', 'Openrouter'], index=0)
 
-    # User selects the model
-    selected_model = st.selectbox("Select an Ollama model:", available_models, index=0)
+    if llm_provider == 'Ollama' :
+
+        selected_model = st.selectbox("Select an Ollama model:", available_models, index=0)
+
+    else : 
+        llm_name = st.text_input("Enter LLM Name", value='qwen/qwq-32b:free')
+        # openrouter_api_key = st.text_input("Enter Openrouter API Key")
 
     # Slider to choose the number of retrieved results
-    n_results = st.slider("Number of retrieved documents", min_value=1, max_value=10, value=5)
+    n_results = st.slider("Number of retrieved documents", min_value=1, max_value=15, value=5)
+
+    # Button to download PDF
+    if st.button("Download Chat as PDF"):
+        pdf_buffer = generate_pdf()
+        st.download_button(
+            label="Download",
+            data=pdf_buffer,
+            file_name="chat_history.pdf",
+            mime="application/pdf"
+        )
     
     if st.button("Clear Chat"):
         st.session_state.messages = []
         st.rerun()
-
-    st.info("""
+        
+    with st.expander("PDF Proccesing Methods"):
+        st.info("""
 ##### There're 2 method to process PDF after uploading: 
     - Simple Processing : extract the text directly from the pdf if the pdf searchable. (Faster)
     - Advanced Processing : extract the text by converting the pdf to markdown using OCR and then search the markdown file. (Slower)
@@ -162,7 +223,7 @@ with st.sidebar:
 """)
 
 # Initialize the RAG system
-rag_system = RAGSystem(collection_name="pdf_content", db_path="PDF_chroma_db", ollama_model=selected_model, n_results=n_results)
+rag_system = RAGSystem(collection_name="pdf_content", db_path="PDF_ChromaDB", n_results=n_results)
 
 
 if "messages" not in st.session_state:
@@ -194,33 +255,34 @@ else:
                 try:
                     metadata = None
                     with st.spinner("Thinking..."):
-                        # Stream LLM response
-                        response_placeholder = st.empty()
-                        streamed_response = ""
 
-                        for chunk in rag_system.generate_response(prompt):  # Stream response
-                            if isinstance(chunk, dict):  # Ensure metadata is correctly assigned
-                                metadata = chunk
-                            else:
-                                streamed_response = chunk  # Accumulate response text
-                                response_placeholder.markdown(streamed_response)  # Update UI
+                        if llm_provider == 'Ollama' :
+                            # Stream LLM response
+                            response_placeholder = st.empty()
+                            streamed_response = ""
 
-                    logger.info(f"Metadata: {metadata}")
+                            for chunk in rag_system.generate_response(prompt, selected_model):  # Stream response
+                                if isinstance(chunk, dict):  # Ensure metadata is correctly assigned
+                                    metadata = chunk
+                                else:
+                                    streamed_response = chunk  # Accumulate response text
+                                    response_placeholder.markdown(streamed_response)  # Update UI
 
-                    # if metadata:
-                    st.write(f"""
-                        \n\n----
-                        Token Count: {metadata.get('token_count', 'N/A')} | Response Time: {metadata.get('response_time', 'N/A')} | n_results of context: {metadata.get('n_results', 'N/A')}  
-                        """)
+                            st.write(f"""\n\n----
+                            Token Count: {metadata.get('token_count', 'N/A')} | Response Time: {metadata.get('response_time', 'N/A')} | n_results of context: {metadata.get('n_results', 'N/A')} | LLM Name : {selected_model} """)
 
-                    response = f"""
-                        {remove_tags(streamed_response)}
-
-                        \n----
-                        Token Count: {metadata.get('token_count', 'N/A')}, 
-                        Response Time: {metadata.get('response_time', 'N/A')}, 
-                        n_results of context: {metadata.get('n_results', 'N/A')} 
-                        """
+                            response = f"""
+                            {remove_tags(streamed_response)}
+                            \n\n----
+                            Token Count: {metadata.get('token_count', 'N/A')} | Response Time: {metadata.get('response_time', 'N/A')} | n_results of context: {metadata.get('n_results', 'N/A')} | LLM Name : {selected_model}
+                            """
+                        else :
+                            llm_response = rag_system.generate_response2(prompt)
+                            response = f"""
+                            {llm_response}
+                            \n----
+                            LLM Name : {llm_name}
+                            """
 
                         # Store assistant response
                     st.session_state.messages.append({"role": "assistant", "content": response})

@@ -85,46 +85,51 @@ class RAGSystem :
         
         return results['documents'][0]
     
-    def _rerank_docs(self, chunks:list, query:str, top_k:int=5):
+    def _rerank_docs(self, chunks: list, query: str, top_k: int = 5):
         """
-        Retrieves and ranks text chunks using BM25, semantic similarity, Recomp-like coverage, and context filtering.
+        Retrieves and ranks text chunks using BM25, semantic similarity,
+        and diversity filtering inspired by ReComp.
         """
         # ----- BM25 Lexical Ranking -----
         tokenized_chunks = [word_tokenize(chunk.lower()) for chunk in chunks]
         bm25 = BM25Okapi(tokenized_chunks)
         bm25_scores = bm25.get_scores(word_tokenize(query.lower()))
         
-        # ----- Semantic Ranking (Contriever style) -----
+        # ----- Semantic Ranking -----
         chunk_embeddings = embedder.encode(chunks, convert_to_tensor=True)
         query_embedding = embedder.encode([query], convert_to_tensor=True)
         semantic_scores = cosine_similarity(query_embedding, chunk_embeddings)[0]
         
         # ----- Combine Scores -----
-            # Normalize scores and average
         bm25_norm = (bm25_scores - np.min(bm25_scores)) / (np.max(bm25_scores) - np.min(bm25_scores) + 1e-5)
         sem_norm = (semantic_scores - np.min(semantic_scores)) / (np.max(semantic_scores) - np.min(semantic_scores) + 1e-5)
         combined_scores = 0.5 * bm25_norm + 0.5 * sem_norm
 
         # ----- Top-K Selection -----
-        top_indices = np.argsort(combined_scores)[-top_k:][::-1]
-        top_chunks = [chunks[i] for i in top_indices]
+        ranked_indices = np.argsort(combined_scores)[::-1]  # from best to worst
 
-        # ----- Recomp-like Filtering (diversity) -----
-        final_chunks = [top_chunks[0]]  # Always keep the best one
-        for chunk in top_chunks[1:]:
+        # ----- Recomp-like Filtering (diversity-aware Top-K) -----
+        final_chunks = []
+        seen_embeddings = []
+        i = 0
+
+        while len(final_chunks) < top_k and i < len(ranked_indices):
+            idx = ranked_indices[i]
+            candidate = chunks[idx]
+            candidate_emb = embedder.encode([candidate])
+
             is_similar = False
-            for kept in final_chunks:
-                sim = cosine_similarity(
-                    embedder.encode([chunk]), 
-                    embedder.encode([kept])
-                )[0][0]
-                if sim > 0.85:  # Threshold for redundancy
+            for emb in seen_embeddings:
+                sim = cosine_similarity(candidate_emb, emb)[0][0]
+                if sim > 0.85:
                     is_similar = True
                     break
+
             if not is_similar:
-                final_chunks.append(chunk)
-            if len(final_chunks) >= top_k:
-                break
+                final_chunks.append(candidate)
+                seen_embeddings.append(candidate_emb)
+
+            i += 1
 
         return final_chunks
     

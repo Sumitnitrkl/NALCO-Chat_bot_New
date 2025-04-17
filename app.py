@@ -170,6 +170,7 @@ with st.sidebar:
             # Split the text into chunks
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=1024, chunk_overlap=150)
             chunks = text_splitter.split_text(text)
+            logger.info(f"Chunks Total : {len(chunks)}")
 
             # Convert chunks into Document objects
             documents = [Document(page_content=chunk) for chunk in chunks]
@@ -226,7 +227,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "max_messages" not in st.session_state:
-    st.session_state.max_messages = 40  # 20 user + 20 assistant messages
+    st.session_state.max_messages = 50  # 25 user + 25 assistant messages
 
 # Display chat history
 for message in st.session_state.messages:

@@ -173,6 +173,7 @@ Then open your browser to `http://localhost:8501` (it will open automatically)
 OPENROUTER_API_KEY='OpenRouter API Key'
 ```
 
+- make sure that all libraries from 'requirements.txt' are installed, espisally 'Marker' -> `pip install marker-pdf`
 - make sure that ollama is running locally.
 - If no Ollama models are found, ensure that Ollama is properly installed and models are pulled using `ollama pull <model_name>`.
 - Ensure that the PDF file uploaded is valid and can be processed by the app.

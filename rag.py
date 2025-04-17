@@ -23,10 +23,10 @@ try:
 except LookupError:
     download('punkt')
 
-# try:
-#     find('tokenizers/punkt_tab')
-# except LookupError:
-#     download('punkt_tab')
+try:
+    find('tokenizers/punkt_tab')
+except LookupError:
+    download('punkt_tab')
 
 # nltk.download('punkt')
 # nltk.download('punkt_tab')

@@ -53,7 +53,7 @@
 
    - Pull required models:
      ```bash
-     ollama pull mxbai-embed-large:latest  # required
+     ollama pull nomic-embed-text:latest  # required
      ollama pull qwen2.5:latest  # or your preferred model
      ```
 

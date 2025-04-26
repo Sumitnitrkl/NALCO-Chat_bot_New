@@ -4,7 +4,8 @@ import logging
 import subprocess
 from PIL import Image
 import streamlit as st
-from PyPDF2 import PdfReader
+# from PyPDF2 import PdfReader
+import pymupdf4llm
 from langchain_ollama import OllamaEmbeddings
 from marker.converters.pdf import PdfConverter
 from marker.models import create_model_dict
@@ -110,6 +111,10 @@ if 'pdf_name' not in st.session_state:
     st.session_state.pdf_name = None
 
 with st.sidebar:
+
+    # chunk_size for splittig
+    chunk_size = st.number_input('chunk size :', min_value=128, max_value=2560, value=512, step=128)
+
     # If a new PDF is uploaded, reset session state
     if pdf is not None:
         new_pdf_name = os.path.splitext(pdf.name)[0]
@@ -139,27 +144,30 @@ with st.sidebar:
 
             text = ""
 
+            # put the target pdf in the local folder (in tmp folder)
+            # Remove the tmp folder if it exists
+            if os.path.exists("./tmp"):
+                shutil.rmtree("./tmp")
+
+            # Recreate the tmp folder
+            os.makedirs("./tmp", exist_ok=True)
+
+            pdf_path = f"./tmp/{pdf.name}"
+
+            # Save the uploaded file to disk
+            with open(pdf_path, "wb") as f:
+                f.write(pdf.getbuffer())
+
             with st.spinner("Processing PDF..."):  # Landing spinner
                 # Process PDF based on the selected mode
                 if st.session_state.processing_mode == "Simple Processing":
                     # Extract text from the uploaded PDF
-                    pdf_reader = PdfReader(pdf)
-                    for page in pdf_reader.pages:
-                        text += page.extract_text()
+                    text = pymupdf4llm.to_markdown(pdf_path)
+                    # pdf_reader = PdfReader(pdf)
+                    # for page in pdf_reader.pages:
+                        # text += page.extract_text()
 
                 elif st.session_state.processing_mode == "Advanced Processing":
-                    # Remove the tmp folder if it exists
-                    if os.path.exists("./tmp"):
-                        shutil.rmtree("./tmp")
-
-                    # Recreate the tmp folder
-                    os.makedirs("./tmp", exist_ok=True)
-
-                    pdf_path = f"./tmp/{pdf.name}"
-
-                    # Save the uploaded file to disk
-                    with open(pdf_path, "wb") as f:
-                        f.write(pdf.getbuffer())
 
                     artifact_dict = create_model_dict()
                     converter = PdfConverter(artifact_dict=artifact_dict)
@@ -168,8 +176,10 @@ with st.sidebar:
                     text = convert2md._load_file(markdown_path)
 
             # Split the text into chunks
-            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1024, chunk_overlap=150)
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=100)
             chunks = text_splitter.split_text(text)
+
+            logger.info(f'Chunks Numbers for {pdf.name} is : {len(chunks)}')
 
             # Convert chunks into Document objects
             documents = [Document(page_content=chunk) for chunk in chunks]
@@ -178,7 +188,7 @@ with st.sidebar:
                 # Create embeddings and a vector database
                 vector_db = Chroma.from_documents(
                     documents=documents,
-                    embedding=OllamaEmbeddings(model="mxbai-embed-large:latest"),
+                    embedding=OllamaEmbeddings(model="nomic-embed-text:latest"),
                     collection_name="pdf_content",
                     persist_directory="./PDF_ChromaDB",
                 )
@@ -186,7 +196,7 @@ with st.sidebar:
             st.success("Processing Complete!")
 
     # User selects the model Provider
-    llm_provider = st.selectbox("Select LLM Provider:", ['Ollama', 'Openrouter'], index=0)
+    llm_provider = st.selectbox("Select LLM Provider:", ['Openrouter', 'Ollama'], index=0)
 
     if llm_provider == 'Ollama' :
         selected_model = st.selectbox("Select an Ollama model:", available_models, index=0)
@@ -214,7 +224,7 @@ with st.sidebar:
     with st.expander("PDF Proccesing Methods"):
         st.info("""
 ##### There're 2 method to process PDF after uploading: 
-    - Simple Processing : extract the text directly from the pdf if the pdf searchable. (Faster)
+    - Simple Processing : extract the text as markdown from the pdf if the pdf searchable. (Faster)
     - Advanced Processing : extract the text by converting the pdf to markdown using OCR and then search the markdown file. (Slower)
 """)
 

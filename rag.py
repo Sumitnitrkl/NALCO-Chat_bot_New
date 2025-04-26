@@ -14,6 +14,11 @@ from nltk.data import find
 from nltk import download
 from nltk.tokenize import word_tokenize
 
+from langchain_community.cache import BaseCache
+from langchain_core.callbacks import Callbacks
+
+OllamaLLM.model_rebuild()  # Rebuild the model to finalize the schema
+
 load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
@@ -23,10 +28,10 @@ try:
 except LookupError:
     download('punkt')
 
-# try:
-#     find('tokenizers/punkt_tab')
-# except LookupError:
-#     download('punkt_tab')
+try:
+    find('tokenizers/punkt_tab')
+except LookupError:
+    download('punkt_tab')
 
 # nltk.download('punkt')
 # nltk.download('punkt_tab')
@@ -48,7 +53,7 @@ class RAGSystem :
             raise ValueError("'collection_name' parameter is required.")
 
         self.logger = self._setup_logging()
-        self.embedding_model = OllamaEmbeddings(model="mxbai-embed-large:latest")
+        self.embedding_model = OllamaEmbeddings(model="nomic-embed-text:latest")
         self.client = chromadb.PersistentClient(path=self.db_path)
         self.collection = self.client.get_or_create_collection(name=self.collection_name)
         # self.logger.info("*** RAGSystem initialized ***")
@@ -175,7 +180,7 @@ class RAGSystem :
         
         reranked_retrieved_docs = self._rerank_docs(chunks=retrieved_docs, query=query, top_k=self.n_results)
 
-        context = "\n########\n".join(reranked_retrieved_docs)
+        context = "\n\n########\n\n".join(reranked_retrieved_docs)
         
         prompt = self._get_prompt(query, context)
 
@@ -217,7 +222,7 @@ class RAGSystem :
         
         reranked_retrieved_docs = self._rerank_docs(chunks=retrieved_docs, query=query, top_k=self.n_results)
 
-        context = "\n-----\n".join(reranked_retrieved_docs)
+        context = "\n\n########\n\n".join(reranked_retrieved_docs)
 
         prompt = self._get_prompt(query, context)
 

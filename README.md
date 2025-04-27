@@ -8,10 +8,14 @@
 
 ---
 
-### ![Tutorial Demo](https://github.com/drisskhattabi6/Chat-with-PDF-Locally/blob/main/imgs/video.mp4)
+### Tutorial Demo
 
-<video src="./imgs/video.mp4" autoplay controls loop>Tutorial Video</video>
-<video src="./imgs/tutorial.gif" autoplay controls loop>Tutorial GIF</video>
+![Tutorial GIF](./imgs/tutorial.gif)
+
+<video src="./imgs/video.mp4" autoplay controls loop controlsList="nodownload" style="max-width: 100%; height: auto;">
+  Your browser does not support the video tag.
+</video>
+
 
 ## Technology stack
 

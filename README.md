@@ -8,11 +8,12 @@
 
 ---
 
-### Video Demo
+### ![Tutorial Demo](https://github.com/drisskhattabi6/Chat-with-PDF-Locally/blob/main/imgs/video.mp4)
 
-<video src="./imgs/video.mp4" autoplay controls loop></video>
+<video src="./imgs/video.mp4" autoplay controls loop>Tutorial Video</video>
+<video src="./imgs/tutorial.gif" autoplay controls loop>Tutorial GIF</video>
 
-## technology stack
+## Technology stack
 
 - [LangChain](https://python.langchain.com/api_reference/reference.html)
 - [Streamlit](https://docs.streamlit.io/)

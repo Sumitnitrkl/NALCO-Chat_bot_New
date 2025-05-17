@@ -2,11 +2,12 @@ chromadb
 langchain
 langchain_community
 langchain_ollama
+ollama
 marker-pdf
 nltk
 numpy
 Pillow
-PyPDF2
+pymupdf4llm
 python-dotenv
 rank_bm25
 reportlab

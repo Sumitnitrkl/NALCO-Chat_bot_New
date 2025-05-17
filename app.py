@@ -4,17 +4,17 @@ import logging
 import subprocess
 from PIL import Image
 import streamlit as st
-# from PyPDF2 import PdfReader
 import pymupdf4llm
-from langchain_ollama import OllamaEmbeddings
 from marker.converters.pdf import PdfConverter
 from marker.models import create_model_dict
+from langchain_ollama import OllamaEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma 
 from langchain.schema import Document 
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.utils import simpleSplit
+
 from rag import RAGSystem
 from md_convertor import Convert2Markdown
 
@@ -83,7 +83,7 @@ def get_available_models():
         return []
 
 def remove_tags(text):
-    return re.sub(r"<think>[\s\S]*?</think>", "", text).strip()
+    return re.sub(r"^.*?</think>", "", text, flags=re.DOTALL).strip()
 
 # Fetch available models
 available_models = get_available_models()
@@ -129,7 +129,7 @@ with st.sidebar:
             st.success("Previous chat and collection deleted. Please start a new chat.")
 
     if pdf is not None and not st.session_state.processing_complete:
-        markdown_path = f"./tmp/{st.session_state.pdf_name}.md"  # Define output path
+        markdown_path = f"./tmp/{st.session_state.pdf_name}.md"
 
         # Choose processing mode
         processing_mode = st.radio("Choose processing mode:", ("Simple Processing", "Advanced Processing"))
@@ -158,14 +158,11 @@ with st.sidebar:
             with open(pdf_path, "wb") as f:
                 f.write(pdf.getbuffer())
 
-            with st.spinner("Processing PDF..."):  # Landing spinner
+            with st.spinner("Processing PDF..."): 
                 # Process PDF based on the selected mode
                 if st.session_state.processing_mode == "Simple Processing":
-                    # Extract text from the uploaded PDF
+                    # Extract text from the uploaded PDF as markdown
                     text = pymupdf4llm.to_markdown(pdf_path)
-                    # pdf_reader = PdfReader(pdf)
-                    # for page in pdf_reader.pages:
-                        # text += page.extract_text()
 
                 elif st.session_state.processing_mode == "Advanced Processing":
 
@@ -178,8 +175,6 @@ with st.sidebar:
             # Split the text into chunks
             text_splitter = RecursiveCharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=100)
             chunks = text_splitter.split_text(text)
-            logger.info(f"Chunks Total : {len(chunks)}")
-
             logger.info(f'Chunks Numbers for {pdf.name} is : {len(chunks)}')
 
             # Convert chunks into Document objects
@@ -197,13 +192,13 @@ with st.sidebar:
             st.success("Processing Complete!")
 
     # User selects the model Provider
-    llm_provider = st.selectbox("Select LLM Provider:", ['Openrouter', 'Ollama'], index=0)
+    llm_provider = st.selectbox("Select LLM Provider:", ['Sambanova', 'Ollama'], index=0)
 
     if llm_provider == 'Ollama' :
         selected_model = st.selectbox("Select an Ollama model:", available_models, index=0)
     else : 
-        llm_name = st.text_input("Enter LLM Name", value='qwen/qwq-32b:free')
-        openrouter_api_key = st.text_input("Enter Openrouter API Key", type="password", value=os.getenv("OPENROUTER_API_KEY"))
+        llm_name = st.selectbox("Enter LLM Name:", ['DeepSeek-R1-Distill-Llama-70B', 'DeepSeek-V3-0324', 'DeepSeek-R1', 'Qwen3-32B', 'QwQ-32B'], index=0)
+        api_key = st.text_input("Enter Sambanova API Key", type="password", value=os.getenv("API_KEY"))
 
     # Slider to choose the number of retrieved results
     n_results = st.slider("Number of retrieved documents", min_value=1, max_value=15, value=5)
@@ -226,7 +221,7 @@ with st.sidebar:
         st.info("""
 ##### There're 2 method to process PDF after uploading: 
     - Simple Processing : extract the text as markdown from the pdf if the pdf searchable. (Faster)
-    - Advanced Processing : extract the text by converting the pdf to markdown using OCR and then search the markdown file. (Slower)
+    - Advanced Processing : Efficient for Complex PDFs (like Research Papers), extract the text by converting the pdf to markdown using OCR and then search the markdown file. (Slower)
 """)
 
 # Initialize the RAG system
@@ -250,46 +245,52 @@ st.markdown("----")
 if len(st.session_state.messages) >= st.session_state.max_messages:
     st.info("Notice: The maximum message limit has been reached. clear the chat plz!")
 else:
-    if prompt := st.chat_input("What is up?"):
+    if query := st.chat_input("Ask me ..."):
         if pdf is None or st.session_state.processing_complete != True :
             st.error("Please upload at least one PDF file.")
         else:
-            st.session_state.messages.append({"role": "user", "content": prompt})
+            st.session_state.messages.append({"role": "user", "content": query})
             with st.chat_message("user"):
-                st.markdown(prompt)
+                st.markdown(query)
 
             with st.chat_message("assistant"):
                 try:
-                    metadata = None
                     with st.spinner("Thinking..."):
 
                         if llm_provider == 'Ollama' :
-                            response_placeholder = st.empty()
-                            streamed_response = ""
 
-                            for chunk in rag_system.generate_response(prompt, selected_model):  # Stream response
-                                if isinstance(chunk, dict):
-                                    metadata = chunk
-                                else:
-                                    streamed_response = chunk 
-                                    response_placeholder.markdown(streamed_response)
-
-                            st.write(f"""\n\n----
-                            LLM Name : {selected_model} | Token Count: {metadata.get('token_count', 'N/A')} | Response Time: {metadata.get('response_time', 'N/A')} | n_results of context: {n_results}""")
+                            llm_response, time, docs_nbrs , input_token_count, output_token_count = rag_system.generate_response(query.strip(), selected_model)
 
                             response = f"""
-                            {remove_tags(streamed_response)}
-                            \n\n----
-                            LLM Name : {selected_model} | Total Tokens: {metadata.get('token_count', 'N/A')} | Response Time: {metadata.get('response_time', 'N/A')} | n_results of context: {n_results}
-                            """
-                        else :
-                            llm_response, total_tokens = rag_system.generate_response2(query=prompt, llm_name=llm_name, openrouter_api_key=openrouter_api_key)
-                            response = f"""
-                            {llm_response}
+                            {remove_tags(llm_response)}
+
                             \n----
-                            LLM Name : {llm_name} | Total Tokens : {total_tokens} | n_results of context: {n_results}
+                            LLM Name: {selected_model} | Response Time: {time} | Input Tokens Count : {input_token_count} | Output Tokens Count : {output_token_count} | Number of Retrieved Documents: {docs_nbrs}
                             """
-                            st.write(response)
+                            st.markdown(response)
+
+                        else :
+                            llm_response, time, docs_nbrs , input_token_count, output_token_count  = rag_system.generate_response2(query.strip(), llm_name)
+
+                            if llm_response == "":
+                                llm_response = "No, response, Maybe the API not available or the model is not installed"
+
+                            if 'Error' in llm_response:
+                                st.error(llm_response)
+                                response = llm_response
+
+                            elif 'No Document retrieved' in llm_response:
+                                st.error("No Document retrieved, make sure to add documents to the Vector DB")
+                                response = llm_response
+
+                            else:
+                                response = f"""
+                                {remove_tags(llm_response)}
+
+                                \n----
+                                LLM Name: {llm_name} | Response Time: {time} | Input Tokens Count : {input_token_count} | Output Tokens Count : {output_token_count} | Number of Retrieved Documents: {docs_nbrs}
+                                """
+                                st.markdown(response)
 
                         # Store assistant response
                     st.session_state.messages.append({"role": "assistant", "content": response})

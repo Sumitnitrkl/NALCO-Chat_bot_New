@@ -1,27 +1,21 @@
 import logging
 import chromadb
-from langchain_ollama import OllamaEmbeddings, OllamaLLM
+import tiktoken
 import time, os
-import requests
-import json
-from dotenv import load_dotenv
+import numpy as np
+from nltk import download
+from nltk.data import find
 from rank_bm25 import BM25Okapi
+from nltk.tokenize import word_tokenize
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-import numpy as np
-# import nltk
-from nltk.data import find
-from nltk import download
-from nltk.tokenize import word_tokenize
 
-from langchain_community.cache import BaseCache
-from langchain_core.callbacks import Callbacks
+from llm_inference import LLMInference
 
-OllamaLLM.model_rebuild()  # Rebuild the model to finalize the schema
-
+from dotenv import load_dotenv
 load_dotenv()
 
-OPENROUTER_API_KEY = os.getenv('OPENROUTER_API_KEY')
+API_KEY = os.getenv('API_KEY')
 
 try:
     find('tokenizers/punkt')
@@ -33,8 +27,6 @@ try:
 except LookupError:
     download('punkt_tab')
 
-# nltk.download('punkt')
-# nltk.download('punkt_tab')
 # Load SentenceTransformer model for semantic similarity (Contriever-style)
 embedder = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
@@ -42,7 +34,7 @@ class RAGSystem :
     def __init__(
             self, collection_name: str, 
             db_path: str ="PDF_ChromaDB", 
-            n_results: int =5
+            n_results: int = 5
         ) :
 
         self.collection_name = collection_name
@@ -52,11 +44,12 @@ class RAGSystem :
         if not self.collection_name:
             raise ValueError("'collection_name' parameter is required.")
 
+        self.llm_inference = LLMInference()
+
         self.logger = self._setup_logging()
-        self.embedding_model = OllamaEmbeddings(model="nomic-embed-text:latest")
+        # self.embedding_model = OllamaEmbeddings(model="nomic-embed-text:latest")
         self.client = chromadb.PersistentClient(path=self.db_path)
         self.collection = self.client.get_or_create_collection(name=self.collection_name)
-        # self.logger.info("*** RAGSystem initialized ***")
     
     def _setup_logging(self) -> logging.Logger:
         logger = logging.getLogger(__name__)
@@ -78,7 +71,13 @@ class RAGSystem :
         return f"{int(minutes)}m {int(seconds)}s" if minutes else f"Time: {int(seconds)}s"
     
     def _generate_embeddings(self, text: str):
-        return self.embedding_model.embed_query(text)
+        return self.llm_inference._generate_embeddings(input_text=text, model_name="nomic-embed-text:latest")
+        # return self.llm_inference._generate_embeddings(input_text=text, model_name="mxbai-embed-large:latest")
+    
+    def _get_tokens_count(self, text: str):
+        """Returns the number of tokens in the given text."""
+        encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
+        return len(encoding.encode(text))
     
     def _retrieve(self, user_text: str, n_results:int=10):
         """Retrieves relevant documents based on user input."""
@@ -91,10 +90,8 @@ class RAGSystem :
         return results['documents'][0]
     
     def _rerank_docs(self, chunks: list, query: str, top_k: int = 5):
-        """
-        Retrieves and ranks text chunks using BM25, semantic similarity,
-        and diversity filtering inspired by ReComp.
-        """
+        """Retrieves and ranks text chunks using BM25, semantic similarity"""
+        # chunks = [chunk['content'] for chunk in chunks] 
         # ----- BM25 Lexical Ranking -----
         tokenized_chunks = [word_tokenize(chunk.lower()) for chunk in chunks]
         bm25 = BM25Okapi(tokenized_chunks)
@@ -113,28 +110,8 @@ class RAGSystem :
         # ----- Top-K Selection -----
         ranked_indices = np.argsort(combined_scores)[::-1]  # from best to worst
 
-        # ----- Recomp-like Filtering (diversity-aware Top-K) -----
-        final_chunks = []
-        seen_embeddings = []
-        i = 0
-
-        while len(final_chunks) < top_k and i < len(ranked_indices):
-            idx = ranked_indices[i]
-            candidate = chunks[idx]
-            candidate_emb = embedder.encode([candidate])
-
-            is_similar = False
-            for emb in seen_embeddings:
-                sim = cosine_similarity(candidate_emb, emb)[0][0]
-                if sim > 0.85:
-                    is_similar = True
-                    break
-
-            if not is_similar:
-                final_chunks.append(candidate)
-                seen_embeddings.append(candidate_emb)
-
-            i += 1
+        final_chunks = [chunks[i] for i in ranked_indices]
+        final_chunks = final_chunks[:top_k]
 
         return final_chunks
     
@@ -169,14 +146,14 @@ class RAGSystem :
         """Generates a response using retrieved documents and an LLM."""
 
         if not ollama_model :
-            return "Choose and ollama LLM"
+            return "Error: Choose an ollama LLM"
 
         self.logger.info(f"--> Generate Response Using Ollama LLM : {ollama_model}")
 
         retrieved_docs = self._retrieve(query, n_results=20)
         
         if not retrieved_docs:
-            return "No relevant information found."
+            return "No relevant information found, may be the data base is empty."
         
         reranked_retrieved_docs = self._rerank_docs(chunks=retrieved_docs, query=query, top_k=self.n_results)
 
@@ -187,36 +164,32 @@ class RAGSystem :
         self.logger.info(f"-> User Query : {query}")
         self.logger.info(f"-> Context : {prompt}")
 
-        ollama_llm = OllamaLLM(model=ollama_model)
-        
-        token_count = ollama_llm.get_num_tokens(prompt)
+        # input_query_token_count = self.ollama_llm.get_num_tokens(query)
+        input_prompt_token_count = self._get_tokens_count(prompt)
         start_time = time.time()
 
-        streamed_response = ""
-        for chunk in ollama_llm.stream(prompt): 
-            streamed_response += chunk
-            yield streamed_response 
+        response = self.llm_inference.generate_text(prompt=prompt, model_name=ollama_model, llm_provider='Ollama')
 
+        output_token_count = self._get_tokens_count(response)
         response_time = time.time() - start_time
-        self.logger.info(f"-> LLM Response : {streamed_response}")
-        self.logger.info(f"-> input token count : {token_count}  |  response time : {self._format_time(response_time)}")
-        metadata = {
-            'token_count': token_count,
-            'response_time': self._format_time(response_time)
-        }
-        yield metadata
+        self.logger.info(f"-> LLM Response : {response}")
+        self.logger.info(f"-> Output token count : {output_token_count} | Input token count : {input_prompt_token_count} | response time : {self._format_time(response_time)}")
 
-    def generate_response2(self, query, llm_name='qwen/qwq-32b:free', openrouter_api_key=None) :
+        return response, self._format_time(response_time), self.n_results , input_prompt_token_count, output_token_count
+    
 
-        if not openrouter_api_key and not OPENROUTER_API_KEY :
+    def generate_response2(self, query, llm_name='QwQ-32B', api_key=None) :
+
+        if not api_key and not API_KEY :
             return "Set OpenRouter API Key"
         
-        openrouter_key = openrouter_api_key if openrouter_api_key else OPENROUTER_API_KEY
+        api_key = api_key if api_key else API_KEY
 
         self.logger.info(f"--> Generate Response Using OpenRouter LLM : {llm_name}")
 
         retrieved_docs = self._retrieve(query, n_results=20)
-        
+        self.logger.info(f"-> type Retrieved documents : {type(retrieved_docs)}")
+        self.logger.info(f"-> api_key : {api_key}")
         if not retrieved_docs:
             return "No relevant information found."
         
@@ -226,32 +199,21 @@ class RAGSystem :
 
         prompt = self._get_prompt(query, context)
 
-        response = requests.post(
-            url="https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {openrouter_key}",
-                "Content-Type": "application/json",
-            },
-            data=json.dumps({
-                "model": llm_name,
-                "messages": [
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-                ],
-            })
-        )
+        start_time = time.time()
 
-        response_data = json.loads(response.text)
-        print(response_data)
+        response = self.llm_inference.generate_text(prompt=prompt, model_name=llm_name, llm_provider='Sambanova')
 
-        # Check if there's an error key in the response
-        if "error" in response_data:
-            error_message = response_data["error"].get("message", "Unknown error")
-            raise Exception(f"API Error: {error_message}")
+        input_prompt_token_count = response[1]
+        output_token_count = self._get_tokens_count(response[0])
+        response_time = time.time() - start_time
+        self.logger.info(f"-> LLM Response : {response[0]}")
+        self.logger.info(f"-> Output token count : {output_token_count} | Input token count : {input_prompt_token_count}  |  response time : {self._format_time(response_time)}")
         
-        return response_data["choices"][0]["message"]["content"], response_data["usage"]["total_tokens"]
+        return response[0], self._format_time(response_time), self.n_results , input_prompt_token_count, output_token_count
 
     def delete_collection(self):
         self.client.delete_collection(self.collection_name)
+
+if __name__ == "__main__":
+    rag_system = RAGSystem(collection_name="pdf_content", db_path="PDF_ChromaDB", n_results=5)
+    print(rag_system.generate_response2("What is the name of the book ?", "QwQ-32B"))

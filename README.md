@@ -33,7 +33,7 @@
 - **Customizable Retrieval**: Adjust the number of retrieved results (`n_results`) for context.
 - **Memory Management**: Easily clear vector store and retrievers to reset the system.
 - **Question Answering**: Use the processed PDF content to answer queries through a chatbot interface.
-- **Model Selection**: Choose between model provider (Ollama or Openrouter), than choose an available Ollama LLM or enter OpenRouter LLM Name with API Key.
+- **Model Selection**: Choose between model provider (Ollama or Sambanova), than choose an available Ollama LLM or enter Sambanova LLM Name with API Key.
 - **Text Retrieval**: Retrieve relevant documents from the database based on the user's query and Re-Rank the retrieved documents using BM25, semantic similarity, Recomp-like coverage, and context filtering.
 - **Chat Interface**: Easy-to-use chat interface for interacting with the PDF content.
 - **Download the chat conversion**.
@@ -98,7 +98,7 @@ Then open your browser to `http://localhost:8501` (it will open automatically)
 
 2. **LLM Provider Selection**: Once the PDF is processed,Select you llm provider
    - OLLAMA : Running Loccaly, You can select a model from a list of available Ollama models.
-   - OPENROUTER : using API, get API Key from `https://openrouter.ai/`
+   - Sambanova : using API, get API Key from `https://cloud.sambanova.ai/apis`
 
 3. **Query the Content**:
    After the processing is complete, you can ask questions based on the content of the PDF. The app will use the Chroma vector database to search for relevant information and generate an accurate response using the selected Ollama model.
@@ -150,9 +150,10 @@ Then open your browser to `http://localhost:8501` (it will open automatically)
 ![](./imgs/provider1.png)
 ![](./imgs/provider1-1.png)
 
-- LLM Providers : OpenRouter
+- LLM Providers : Sambanova
 
 ![](./imgs/provider2.png)
+![](./imgs/provider2-2.png)
 
 #### Chat Interface
 
@@ -165,17 +166,17 @@ Then open your browser to `http://localhost:8501` (it will open automatically)
 - Python 3.8+
 - Pip
 - Ollama models installed via `ollama pull`
-- Open Router API Key
+- Sambanova API Key
 - Marker library for PDF to Markdown conversion
 - Chroma for storing vector embeddings
 
 ## Troubleshooting
 
-- if you want to use Openrouter, get the API Key, put it in '.env' file or in input text in UI.
-- in '.env' file, set your OpenRouter API Key:
+- if you want to use Sambanova, get the API Key, put it in '.env' file or in input text in UI.
+- in '.env' file, set your Sambanova API Key:
 
 ```bash
-OPENROUTER_API_KEY='OpenRouter API Key'
+API_KEY='your_api_key'
 ```
 
 - make sure that all libraries from 'requirements.txt' are installed, espisally 'Marker' -> `pip install marker-pdf`

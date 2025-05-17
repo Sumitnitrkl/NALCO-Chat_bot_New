@@ -4,17 +4,20 @@ import logging
 import subprocess
 from PIL import Image
 import streamlit as st
+# -------------------------------
 import pymupdf4llm
 from marker.converters.pdf import PdfConverter
 from marker.models import create_model_dict
+# -------------------------------
 from langchain_ollama import OllamaEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma 
 from langchain.schema import Document 
+# -------------------------------
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.utils import simpleSplit
-
+# -------------------------------
 from rag import RAGSystem
 from md_convertor import Convert2Markdown
 

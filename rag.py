@@ -3,12 +3,8 @@ import chromadb
 import tiktoken
 import time, os
 import numpy as np
-from nltk import download
-from nltk.data import find
 from rank_bm25 import BM25Okapi
 from nltk.tokenize import word_tokenize
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
 
 from llm_inference import LLMInference
 
@@ -16,19 +12,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 API_KEY = os.getenv('API_KEY')
-
-try:
-    find('tokenizers/punkt')
-except LookupError:
-    download('punkt')
-
-try:
-    find('tokenizers/punkt_tab')
-except LookupError:
-    download('punkt_tab')
-
-# Load SentenceTransformer model for semantic similarity (Contriever-style)
-embedder = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
 
 class RAGSystem :
     def __init__(
@@ -47,7 +30,6 @@ class RAGSystem :
         self.llm_inference = LLMInference()
 
         self.logger = self._setup_logging()
-        # self.embedding_model = OllamaEmbeddings(model="nomic-embed-text:latest")
         self.client = chromadb.PersistentClient(path=self.db_path)
         self.collection = self.client.get_or_create_collection(name=self.collection_name)
     
@@ -72,48 +54,56 @@ class RAGSystem :
     
     def _generate_embeddings(self, text: str):
         return self.llm_inference._generate_embeddings(input_text=text, model_name="nomic-embed-text:latest")
-        # return self.llm_inference._generate_embeddings(input_text=text, model_name="mxbai-embed-large:latest")
     
     def _get_tokens_count(self, text: str):
         """Returns the number of tokens in the given text."""
         encoding = tiktoken.encoding_for_model("gpt-3.5-turbo")
         return len(encoding.encode(text))
     
-    def _retrieve(self, user_text: str, n_results:int=10):
-        """Retrieves relevant documents based on user input."""
+    def _retrieve(self, user_text: str, n_results: int = 10):
+
         embedding = self._generate_embeddings(user_text)
-        results = self.collection.query(query_embeddings=[embedding], n_results=n_results)
-        
+
+        # Include document texts and their embeddings
+        results = self.collection.query(
+            query_embeddings=[embedding],
+            n_results=n_results,
+            include=["documents", "embeddings"]
+        )
+
         if not results['documents']:
             return []
-        
-        return results['documents'][0]
+
+        chunks = results['documents'][0]
+        embeddings = results['embeddings'][0]
+
+        return chunks, embeddings
     
-    def _rerank_docs(self, chunks: list, query: str, top_k: int = 5):
-        """Retrieves and ranks text chunks using BM25, semantic similarity"""
-        # chunks = [chunk['content'] for chunk in chunks] 
-        # ----- BM25 Lexical Ranking -----
+    def _rerank_docs(self, chunks: list[str], embeddings: list[list[float]], query: str, top_k: int = 5):
+        """Ranks text chunks using BM25 and precomputed semantic similarity."""
+        # ----- BM25 -----
         tokenized_chunks = [word_tokenize(chunk.lower()) for chunk in chunks]
         bm25 = BM25Okapi(tokenized_chunks)
         bm25_scores = bm25.get_scores(word_tokenize(query.lower()))
-        
-        # ----- Semantic Ranking -----
-        chunk_embeddings = embedder.encode(chunks, convert_to_tensor=True)
-        query_embedding = embedder.encode([query], convert_to_tensor=True)
-        semantic_scores = cosine_similarity(query_embedding, chunk_embeddings)[0]
-        
-        # ----- Combine Scores -----
+
+        # ----- Semantic similarity using Ollama embeddings -----
+        query_embedding = np.array(self._generate_embeddings(query))
+        chunk_embeddings = np.array(embeddings)
+
+        # Cosine similarity
+        dot_product = np.dot(chunk_embeddings, query_embedding)
+        query_norm = np.linalg.norm(query_embedding)
+        chunk_norms = np.linalg.norm(chunk_embeddings, axis=1)
+        semantic_scores = dot_product / (chunk_norms * query_norm + 1e-10)
+
+        # ----- Score normalization -----
         bm25_norm = (bm25_scores - np.min(bm25_scores)) / (np.max(bm25_scores) - np.min(bm25_scores) + 1e-5)
         sem_norm = (semantic_scores - np.min(semantic_scores)) / (np.max(semantic_scores) - np.min(semantic_scores) + 1e-5)
         combined_scores = 0.5 * bm25_norm + 0.5 * sem_norm
 
-        # ----- Top-K Selection -----
-        ranked_indices = np.argsort(combined_scores)[::-1]  # from best to worst
-
-        final_chunks = [chunks[i] for i in ranked_indices]
-        final_chunks = final_chunks[:top_k]
-
-        return final_chunks
+        # ----- Top-k selection -----
+        ranked_indices = np.argsort(combined_scores)[::-1]
+        return [chunks[i] for i in ranked_indices[:top_k]]
     
     def _get_prompt(self, query, context) :
         prompt = f"""
@@ -150,21 +140,20 @@ class RAGSystem :
 
         self.logger.info(f"--> Generate Response Using Ollama LLM : {ollama_model}")
 
-        retrieved_docs = self._retrieve(query, n_results=20)
+        chunks, embeddings = self._retrieve(query, n_results=20)
         
-        if not retrieved_docs:
+        if not chunks:
             return "No relevant information found, may be the data base is empty."
         
-        reranked_retrieved_docs = self._rerank_docs(chunks=retrieved_docs, query=query, top_k=self.n_results)
+        reranked_retrieved_docs = self._rerank_docs(chunks=chunks, embeddings=embeddings, query=query, top_k=self.n_results)
 
         context = "\n\n########\n\n".join(reranked_retrieved_docs)
         
         prompt = self._get_prompt(query, context)
 
         self.logger.info(f"-> User Query : {query}")
-        self.logger.info(f"-> Context : {prompt}")
+        self.logger.info(f"-> Context : {context}")
 
-        # input_query_token_count = self.ollama_llm.get_num_tokens(query)
         input_prompt_token_count = self._get_tokens_count(prompt)
         start_time = time.time()
 
@@ -177,7 +166,6 @@ class RAGSystem :
 
         return response, self._format_time(response_time), self.n_results , input_prompt_token_count, output_token_count
     
-
     def generate_response2(self, query, llm_name='QwQ-32B', api_key=None) :
 
         if not api_key and not API_KEY :
@@ -187,15 +175,16 @@ class RAGSystem :
 
         self.logger.info(f"--> Generate Response Using OpenRouter LLM : {llm_name}")
 
-        retrieved_docs = self._retrieve(query, n_results=20)
-        self.logger.info(f"-> type Retrieved documents : {type(retrieved_docs)}")
-        self.logger.info(f"-> api_key : {api_key}")
-        if not retrieved_docs:
-            return "No relevant information found."
+        chunks, embeddings = self._retrieve(query, n_results=20)
+
+        if not chunks:
+            return "No relevant information found, may be the data base is empty."
         
-        reranked_retrieved_docs = self._rerank_docs(chunks=retrieved_docs, query=query, top_k=self.n_results)
+        reranked_retrieved_docs = self._rerank_docs(chunks=chunks, embeddings=embeddings, query=query, top_k=self.n_results)
 
         context = "\n\n########\n\n".join(reranked_retrieved_docs)
+
+        self.logger.info(f"-> Context : {context}")
 
         prompt = self._get_prompt(query, context)
 

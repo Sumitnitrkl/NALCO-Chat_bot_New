@@ -57,8 +57,7 @@ class Convert2Markdown:
             rendered = marker_converter(input_pdf)
             save_output(rendered, output_directory, f"{base_filename}")
             
-            # if remove_images and os.path.exists(markdown_path):
-            if remove_images :
+            if remove_images:
                 markdown_content = self._load_file(markdown_path)
                 markdown_content = self._markdown_remove_images(markdown_content)
                 self._save_file(markdown_path, markdown_content)

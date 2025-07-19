@@ -43,8 +43,6 @@
 1. **Clone the Repository**:
    Clone the repository to your local machine:
    ```bash
-   git clone https://github.com/drisskhattabi6/Chat-with-PDF-Locally.git
-   cd Chat-with-PDF-Locally
    ```
 
 2. **Install Dependencies**:
@@ -187,4 +185,4 @@ API_KEY='your_api_key'
 
 ---
 
-Follow me on [LinkedIn](https://www.linkedin.com/in/idriss-khattabi-b3a266235/)
+Follow me on [LinkedIn](https://www.linkedin.com/in/sumit-ku912/)

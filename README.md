@@ -43,6 +43,7 @@
 1. **Clone the Repository**:
    Clone the repository to your local machine:
    ```bash
+   https://github.com/Sumitnitrkl/NALCO-Chat_bot_New
    ```
 
 2. **Install Dependencies**:
